@@ -196,7 +196,13 @@ def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_s
                 raise Exception("invalid input_mask_mode")
 
         relevant_labels.append(x["S"])
-    
+
+    for k, v in vocab.items():
+        print("{} => {}".format(k, v))
+
+    for k, v in ivocab.items():
+        print("{} => {}".format(k, v))
+
     return inputs, questions, answers, input_masks, relevant_labels 
 
 

@@ -13,10 +13,12 @@ class Config(object):
     """Holds model hyperparams and data information."""
 
     batch_size = 100
-    embed_size = 80
+    # embed_size = 80
+    embed_size = 100
     hidden_size = 80
 
-    max_epochs = 256
+    # max_epochs = 256
+    max_epochs = 512
     early_stopping = 20
 
     dropout = 0.9
@@ -27,7 +29,8 @@ class Config(object):
     max_grad_val = 10
     noisy_grads = False
 
-    word2vec_init = False
+    # word2vec_init = False
+    word2vec_init = True
     embedding_init = np.sqrt(3) 
 
     # set to zero with strong supervision to only train gates
