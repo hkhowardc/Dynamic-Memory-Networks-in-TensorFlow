@@ -17,8 +17,7 @@ class Config(object):
     embed_size = 100
     hidden_size = 80
 
-    # max_epochs = 256
-    max_epochs = 512
+    max_epochs = 256
     early_stopping = 20
 
     dropout = 0.9
