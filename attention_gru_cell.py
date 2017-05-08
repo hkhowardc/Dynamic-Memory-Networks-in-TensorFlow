@@ -1,18 +1,7 @@
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
-import collections
-import math
-
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import clip_ops
-from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope as vs
 
 from tensorflow.python.ops.math_ops import sigmoid
@@ -42,7 +31,6 @@ class AttentionGRUCell(RNNCell):
     def state_size(self):
         return self._num_units
 
-
     @property
     def output_size(self):
         return self._num_units
@@ -56,18 +44,19 @@ class AttentionGRUCell(RNNCell):
                     raise ValueError("Input should be passed as word input concatenated with 1D attention on end axis")
                 # extract input vector and attention
                 inputs, g = array_ops.split(inputs,
-                        num_or_size_splits=[self._num_units,1],
-                        axis=1)
+                                            num_or_size_splits=[self._num_units, 1],
+                                            axis=1)
                 r = _linear([inputs, state], self._num_units, True)
                 r = sigmoid(r)
             with vs.variable_scope("candidate"):
-                r = r*_linear(state, self._num_units, False)
+                r = r * _linear(state, self._num_units, False)
             with vs.variable_scope("input"):
                 x = _linear(inputs, self._num_units, True)
             h_hat = self._activation(r + x)
 
             new_h = (1 - g) * state + g * h_hat
         return new_h, new_h
+
 
 def _linear(args, output_size, bias, bias_start=0.0):
     """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
@@ -94,8 +83,7 @@ def _linear(args, output_size, bias, bias_start=0.0):
         if shape.ndims != 2:
             raise ValueError("linear is expecting 2D arguments: %s" % shapes)
         if shape[1].value is None:
-            raise ValueError("linear expects shape[1] to be provided for shape %s, "
-                "but saw %s" % (shape, shape[1]))
+            raise ValueError("linear expects shape[1] to be provided for shape %s, but saw %s" % (shape, shape[1]))
         else:
             total_arg_size += shape[1].value
 
@@ -115,7 +103,7 @@ def _linear(args, output_size, bias, bias_start=0.0):
         with vs.variable_scope(outer_scope) as inner_scope:
             inner_scope.set_partitioner(None)
             biases = vs.get_variable(
-                        "biases", [output_size],
-                      dtype=dtype,
-                    initializer=init_ops.constant_initializer(bias_start, dtype=dtype))
+                "biases", [output_size],
+                dtype=dtype,
+                initializer=init_ops.constant_initializer(bias_start, dtype=dtype))
         return nn_ops.bias_add(res, biases)

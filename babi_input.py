@@ -1,20 +1,19 @@
-import sys
-
 import os as os
 import numpy as np
 
 # can be sentence or word
 input_mask_mode = "sentence"
 
+
 # adapted from https://github.com/YerevaNN/Dynamic-memory-networks-in-Theano/
 def init_babi(fname):
     
-    print "==> Loading test from %s" % fname
+    print(("==> Loading test from %s" % fname))
     tasks = []
     task = None
     for i, line in enumerate(open(fname)):
-        id = int(line[0:line.find(' ')])
-        if id == 1:
+        id_int = int(line[0:line.find(' ')])
+        if id_int == 1:
             task = {"C": "", "Q": "", "A": "", "S": ""} 
             counter = 0
             id_map = {}
@@ -25,7 +24,7 @@ def init_babi(fname):
         # if not a question
         if line.find('?') == -1:
             task["C"] += line
-            id_map[id] = counter
+            id_map[id_int] = counter
             counter += 1
             
         else:
@@ -41,7 +40,7 @@ def init_babi(fname):
     return tasks
 
 
-def get_babi_raw(id, test_id):
+def get_babi_raw(train_id, test_id):
     babi_map = {
         "1": "qa1_single-supporting-fact",
         "2": "qa2_two-supporting-facts",
@@ -87,9 +86,9 @@ def get_babi_raw(id, test_id):
         "sh19": "../shuffled/qa19_path-finding",
         "sh20": "../shuffled/qa20_agents-motivations",
     }
-    if (test_id == ""):
-        test_id = id 
-    babi_name = babi_map[id]
+    if test_id == "":
+        test_id = train_id
+    babi_name = babi_map[train_id]
     babi_test_name = babi_map[test_id]
     babi_train_raw = init_babi(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data/en-10k/%s_train.txt' % babi_name))
     babi_test_raw = init_babi(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data/en-10k/%s_test.txt' % babi_test_name))
@@ -99,29 +98,30 @@ def get_babi_raw(id, test_id):
 def load_glove(dim):
     word2vec = {}
     
-    print "==> loading glove"
+    print("==> loading glove")
     with open(("./data/glove/glove.6B/glove.6B." + str(dim) + "d.txt")) as f:
         for line in f:    
             l = line.split()
-            word2vec[l[0]] = map(float, l[1:])
+            word2vec[l[0]] = list(map(float, l[1:]))
             
-    print "==> glove is loaded"
+    print("==> glove is loaded")
     
     return word2vec
 
 
 def create_vector(word, word2vec, word_vector_size, silent=True):
     # if the word is missing from Glove, create some fake vector and store in glove!
-    vector = np.random.uniform(0.0,1.0,(word_vector_size,))
+    vector = np.random.uniform(0.0, 1.0, (word_vector_size,))
     word2vec[word] = vector
-    if (not silent):
-        print "utils.py::create_vector => %s is missing" % word
+    if not silent:
+        print(("utils.py::create_vector => %s is missing" % word))
     return vector
 
+
 def process_word(word, word2vec, vocab, ivocab, word_vector_size, to_return="word2vec", silent=True):
-    if not word in word2vec:
+    if word not in word2vec:
         create_vector(word, word2vec, word_vector_size, silent)
-    if not word in vocab: 
+    if word not in vocab:
         next_index = len(vocab)
         vocab[word] = next_index
         ivocab[next_index] = word
@@ -132,6 +132,7 @@ def process_word(word, word2vec, vocab, ivocab, word_vector_size, to_return="wor
         return vocab[word]
     elif to_return == "onehot":
         raise Exception("to_return = 'onehot' is not implemented yet")
+
 
 def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_sentences=False):
     questions = []
@@ -152,38 +153,38 @@ def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_s
         q = [w for w in q if len(w) > 0]
 
         if split_sentences: 
-            inp_vector = [[process_word(word = w, 
-                                        word2vec = word2vec, 
-                                        vocab = vocab, 
-                                        ivocab = ivocab, 
-                                        word_vector_size = embed_size, 
-                                        to_return = "index") for w in s] for s in inp]
+            inp_vector = [[process_word(word=w,
+                                        word2vec=word2vec,
+                                        vocab=vocab,
+                                        ivocab=ivocab,
+                                        word_vector_size=embed_size,
+                                        to_return="index") for w in s] for s in inp]
         else:
-            inp_vector = [process_word(word = w, 
-                                        word2vec = word2vec, 
-                                        vocab = vocab, 
-                                        ivocab = ivocab, 
-                                        word_vector_size = embed_size, 
-                                        to_return = "index") for w in inp]
+            inp_vector = [process_word(word=w,
+                                       word2vec=word2vec,
+                                       vocab=vocab,
+                                       ivocab=ivocab,
+                                       word_vector_size=embed_size,
+                                       to_return="index") for w in inp]
                                     
-        q_vector = [process_word(word = w, 
-                                    word2vec = word2vec, 
-                                    vocab = vocab, 
-                                    ivocab = ivocab, 
-                                    word_vector_size = embed_size, 
-                                    to_return = "index") for w in q]
+        q_vector = [process_word(word=w,
+                                 word2vec=word2vec,
+                                 vocab=vocab,
+                                 ivocab=ivocab,
+                                 word_vector_size=embed_size,
+                                 to_return="index") for w in q]
         
         if split_sentences:
             inputs.append(inp_vector)
         else:
             inputs.append(np.vstack(inp_vector).astype(floatX))
         questions.append(np.vstack(q_vector).astype(floatX))
-        answers.append(process_word(word = x["A"], 
-                                        word2vec = word2vec, 
-                                        vocab = vocab, 
-                                        ivocab = ivocab, 
-                                        word_vector_size = embed_size, 
-                                        to_return = "index"))
+        answers.append(process_word(word=x["A"],
+                                    word2vec=word2vec,
+                                    vocab=vocab,
+                                    ivocab=ivocab,
+                                    word_vector_size=embed_size,
+                                    to_return="index"))
         # NOTE: here we assume the answer is one word! 
 
         if not split_sentences:
@@ -198,11 +199,13 @@ def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_s
     
     return inputs, questions, answers, input_masks, relevant_labels 
 
+
 def get_lens(inputs, split_sentences=False):
     lens = np.zeros((len(inputs)), dtype=int)
     for i, t in enumerate(inputs):
         lens[i] = t.shape[0]
     return lens
+
 
 def get_sentence_lens(inputs):
     lens = np.zeros((len(inputs)), dtype=int)
@@ -232,12 +235,13 @@ def pad_inputs(inputs, lens, max_len, mode="", sen_lens=None, max_sen_len=None):
                 padded_sentences = padded_sentences[(len(padded_sentences)-max_len):]
                 lens[i] = max_len
             padded_sentences = np.vstack(padded_sentences)
-            padded_sentences = np.pad(padded_sentences, ((0, max_len - lens[i]),(0,0)), 'constant', constant_values=0)
+            padded_sentences = np.pad(padded_sentences, ((0, max_len - lens[i]), (0, 0)), 'constant', constant_values=0)
             padded[i] = padded_sentences
         return padded
 
     padded = [np.pad(np.squeeze(inp, axis=1), (0, max_len - lens[i]), 'constant', constant_values=0) for i, inp in enumerate(inputs)]
     return np.vstack(padded)
+
 
 def create_embedding(word2vec, ivocab, embed_size):
     embedding = np.zeros((len(ivocab), embed_size))
@@ -245,6 +249,7 @@ def create_embedding(word2vec, ivocab, embed_size):
         word = ivocab[i]
         embedding[i] = word2vec[word]
     return embedding
+
 
 def load_babi(config, split_sentences=False):
     vocab = {}
@@ -259,16 +264,16 @@ def load_babi(config, split_sentences=False):
         word2vec = {}
 
     # set word at index zero to be end of sentence token so padding with zeros is consistent
-    process_word(word = "<eos>", 
-                word2vec = word2vec, 
-                vocab = vocab, 
-                ivocab = ivocab, 
-                word_vector_size = config.embed_size, 
-                to_return = "index")
+    process_word(word="<eos>",
+                 word2vec=word2vec,
+                 vocab=vocab,
+                 ivocab=ivocab,
+                 word_vector_size=config.embed_size,
+                 to_return="index")
 
-    print '==> get train inputs'
+    print('==> get train inputs')
     train_data = process_input(babi_train_raw, config.floatX, word2vec, vocab, ivocab, config.embed_size, split_sentences)
-    print '==> get test inputs'
+    print('==> get test inputs')
     test_data = process_input(babi_test_raw, config.floatX, word2vec, vocab, ivocab, config.embed_size, split_sentences)
 
     if config.word2vec_init:
@@ -292,7 +297,7 @@ def load_babi(config, split_sentences=False):
     max_q_len = np.max(q_lens)
     max_input_len = min(np.max(input_lens), config.max_allowed_inputs)
 
-    #pad out arrays to max
+    # pad out arrays to max
     if split_sentences:
         inputs = pad_inputs(inputs, input_lens, max_input_len, "split_sentences", sen_lens, max_sen_len)
         input_masks = np.zeros(len(inputs))
@@ -318,6 +323,3 @@ def load_babi(config, split_sentences=False):
     else:
         test = questions, inputs, q_lens, input_lens, input_masks, answers, rel_labels
         return test, word_embedding, max_q_len, max_input_len, max_mask_len, rel_labels.shape[1], len(vocab)
-
-
-    

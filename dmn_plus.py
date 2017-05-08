@@ -1,15 +1,13 @@
 import sys
-import time
 
 import numpy as np
-from copy import deepcopy
 
 import tensorflow as tf
 from attention_gru_cell import AttentionGRUCell
 
-from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
 
 import babi_input
+
 
 class Config(object):
     """Holds model hyperparams and data information."""
@@ -54,6 +52,7 @@ class Config(object):
 
     train_mode = True
 
+
 def _add_gradient_noise(t, stddev=1e-3, name=None):
     """Adds gradient noise as described in http://arxiv.org/abs/1511.06807
     The input Tensor `t` should be a gradient.
@@ -63,6 +62,7 @@ def _add_gradient_noise(t, stddev=1e-3, name=None):
         t = tf.convert_to_tensor(t, name="t")
         gn = tf.random_normal(tf.shape(t), stddev=stddev)
         return tf.add(t, gn, name=name)
+
 
 # from https://github.com/domluna/memn2n
 def _position_encoding(sentence_size, embedding_size):
@@ -76,7 +76,8 @@ def _position_encoding(sentence_size, embedding_size):
     encoding = 1 + 4 * encoding / embedding_size / sentence_size
     return np.transpose(encoding)
 
-class DMN_PLUS(object):
+
+class DMNPlus(object):
 
     def load_data(self, debug=False):
         """Loads train/valid/test data and sentence encoding"""
@@ -105,8 +106,8 @@ class DMN_PLUS(object):
         # apply droput to grus if flag set
         if self.config.drop_grus:
             self.gru_cell = tf.contrib.rnn.DropoutWrapper(self.gru_cell,
-                    input_keep_prob=self.dropout_placeholder,
-                    output_keep_prob=self.dropout_placeholder)
+                                                          input_keep_prob=self.dropout_placeholder,
+                                                          output_keep_prob=self.dropout_placeholder)
 
     def get_predictions(self, output):
         preds = tf.nn.softmax(output)
@@ -126,7 +127,7 @@ class DMN_PLUS(object):
 
         # add l2 regularization for all variables except biases
         for v in tf.trainable_variables():
-            if not 'bias' in v.name.lower():
+            if 'bias' not in v.name.lower():
                 loss += self.config.l2*tf.nn.l2_loss(v)
 
         tf.summary.scalar('loss', loss)
@@ -146,17 +147,15 @@ class DMN_PLUS(object):
 
         train_op = opt.apply_gradients(gvs)
         return train_op
-  
 
     def get_question_representation(self, embeddings):
         """Get question vectors via embedding and GRU"""
         questions = tf.nn.embedding_lookup(embeddings, self.question_placeholder)
 
         _, q_vec = tf.nn.dynamic_rnn(self.gru_cell,
-                questions,
-                dtype=np.float32,
-                sequence_length=self.question_len_placeholder
-        )
+                                     questions,
+                                     dtype=np.float32,
+                                     sequence_length=self.question_len_placeholder)
 
         return q_vec
 
@@ -169,11 +168,10 @@ class DMN_PLUS(object):
         inputs = tf.reduce_sum(inputs * self.encoding, 2)
 
         outputs, _ = tf.nn.bidirectional_dynamic_rnn(self.gru_cell,
-                self.gru_cell,
-                inputs,
-                dtype=np.float32,
-                sequence_length=self.input_len_placeholder
-        )
+                                                     self.gru_cell,
+                                                     inputs,
+                                                     dtype=np.float32,
+                                                     sequence_length=self.input_len_placeholder)
 
         # f<-> = f-> + f<-
         fact_vecs = tf.reduce_sum(tf.stack(outputs), axis=0)
@@ -187,22 +185,22 @@ class DMN_PLUS(object):
         """Use question vector and previous memory to create scalar attention for current fact"""
         with tf.variable_scope("attention", reuse=True):
 
-            features = [fact_vec*q_vec,
-                        fact_vec*prev_memory,
+            features = [fact_vec * q_vec,
+                        fact_vec * prev_memory,
                         tf.abs(fact_vec - q_vec),
                         tf.abs(fact_vec - prev_memory)]
 
             feature_vec = tf.concat(features, 1)
 
             attention = tf.layers.dense(feature_vec,
-                    self.config.embed_size,
-                    activation=tf.nn.tanh,
-                    reuse=reuse)
+                                        self.config.embed_size,
+                                        activation=tf.nn.tanh,
+                                        reuse=reuse)
 
             attention = tf.layers.dense(attention,
-                    1,
-                    activation=None,
-                    reuse=reuse)
+                                        1,
+                                        activation=None,
+                                        reuse=reuse)
             
         return attention
 
@@ -225,10 +223,9 @@ class DMN_PLUS(object):
 
         with tf.variable_scope('attention_gru', reuse=reuse):
             _, episode = tf.nn.dynamic_rnn(AttentionGRUCell(self.config.hidden_size),
-                    gru_inputs,
-                    dtype=np.float32,
-                    sequence_length=self.input_len_placeholder
-            )
+                                           gru_inputs,
+                                           dtype=np.float32,
+                                           sequence_length=self.input_len_placeholder)
 
         return episode
 
@@ -238,8 +235,8 @@ class DMN_PLUS(object):
         rnn_output = tf.nn.dropout(rnn_output, self.dropout_placeholder)
 
         output = tf.layers.dense(tf.concat([rnn_output, q_vec], 1),
-                self.vocab_size,
-                activation=None)
+                                 self.vocab_size,
+                                 activation=None)
 
         return output
 
@@ -251,12 +248,11 @@ class DMN_PLUS(object):
          
         # input fusion module
         with tf.variable_scope("question", initializer=tf.contrib.layers.xavier_initializer()):
-            print '==> get question representation'
+            print('==> get question representation')
             q_vec = self.get_question_representation(embeddings)
-         
 
         with tf.variable_scope("input", initializer=tf.contrib.layers.xavier_initializer()):
-            print '==> get input representation'
+            print('==> get input representation')
             fact_vecs = self.get_input_representation(embeddings)
 
         # keep track of attentions for possible strong supervision
@@ -264,21 +260,21 @@ class DMN_PLUS(object):
 
         # memory module
         with tf.variable_scope("memory", initializer=tf.contrib.layers.xavier_initializer()):
-            print '==> build episodic memory'
+            print('==> build episodic memory')
 
             # generate n_hops episodes
             prev_memory = q_vec
 
             for i in range(self.config.num_hops):
                 # get a new episode
-                print '==> generating episode', i
+                print('==> generating episode', i)
                 episode = self.generate_episode(prev_memory, q_vec, fact_vecs, i)
 
                 # untied weights for memory update
                 with tf.variable_scope("hop_%d" % i):
                     prev_memory = tf.layers.dense(tf.concat([prev_memory, episode, q_vec], 1),
-                            self.config.hidden_size,
-                            activation=tf.nn.relu)
+                                                  self.config.hidden_size,
+                                                  activation=tf.nn.relu)
 
             output = prev_memory
 
@@ -287,7 +283,6 @@ class DMN_PLUS(object):
             output = self.add_answer_module(output, q_vec)
 
         return output
-
 
     def run_epoch(self, session, data, num_epoch=0, train_writer=None, train_op=None, verbose=2, train=False):
         config = self.config
@@ -304,24 +299,25 @@ class DMN_PLUS(object):
         qp, ip, ql, il, im, a, r = data
         qp, ip, ql, il, im, a, r = qp[p], ip[p], ql[p], il[p], im[p], a[p], r[p] 
 
-        for step in range(total_steps):
-            index = range(step*config.batch_size,(step+1)*config.batch_size)
-            feed = {self.question_placeholder: qp[index],
-                  self.input_placeholder: ip[index],
-                  self.question_len_placeholder: ql[index],
-                  self.input_len_placeholder: il[index],
-                  self.answer_placeholder: a[index],
-                  self.rel_label_placeholder: r[index],
-                  self.dropout_placeholder: dp}
+        for step in range(int(total_steps)):
+            index = list(range(step * config.batch_size, (step + 1) * config.batch_size))
+            feed = {
+                self.question_placeholder: qp[index],
+                self.input_placeholder: ip[index],
+                self.question_len_placeholder: ql[index],
+                self.input_len_placeholder: il[index],
+                self.answer_placeholder: a[index],
+                self.rel_label_placeholder: r[index],
+                self.dropout_placeholder: dp
+            }
             loss, pred, summary, _ = session.run(
               [self.calculate_loss, self.pred, self.merged, train_op], feed_dict=feed)
 
             if train_writer is not None:
-                train_writer.add_summary(summary, num_epoch*total_steps + step)
+                train_writer.add_summary(summary, num_epoch * total_steps + step)
 
-            answers = a[step*config.batch_size:(step+1)*config.batch_size]
-            accuracy += np.sum(pred == answers)/float(len(answers))
-
+            answers = a[step * config.batch_size: (step + 1) * config.batch_size]
+            accuracy += np.sum(pred == answers) / float(len(answers))
 
             total_loss.append(loss)
             if verbose and step % verbose == 0:
@@ -329,12 +325,10 @@ class DMN_PLUS(object):
                   step, total_steps, np.mean(total_loss)))
                 sys.stdout.flush()
 
-
         if verbose:
             sys.stdout.write('\r')
 
         return np.mean(total_loss), accuracy/float(total_steps)
-
 
     def __init__(self, config):
         self.config = config
@@ -346,4 +340,3 @@ class DMN_PLUS(object):
         self.calculate_loss = self.add_loss_op(self.output)
         self.train_step = self.add_training_op(self.calculate_loss)
         self.merged = tf.summary.merge_all()
-
