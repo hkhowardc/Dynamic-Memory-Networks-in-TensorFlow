@@ -290,7 +290,7 @@ class DMNPlus(object):
         if train_op is None:
             train_op = tf.no_op()
             dp = 1
-        total_steps = len(data[0]) / config.batch_size
+        total_steps = int(len(data[0]) / config.batch_size)
         total_loss = []
         accuracy = 0
         
@@ -299,7 +299,7 @@ class DMNPlus(object):
         qp, ip, ql, il, im, a, r = data
         qp, ip, ql, il, im, a, r = qp[p], ip[p], ql[p], il[p], im[p], a[p], r[p] 
 
-        for step in range(int(total_steps)):
+        for step in range(total_steps):
             index = list(range(step * config.batch_size, (step + 1) * config.batch_size))
             feed = {
                 self.question_placeholder: qp[index],
