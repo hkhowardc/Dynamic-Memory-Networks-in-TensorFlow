@@ -91,15 +91,15 @@ class DMNPlus(object):
 
     def add_placeholders(self):
         """add data placeholder to graph"""
-        self.question_placeholder = tf.placeholder(tf.int32, shape=(self.config.batch_size, self.max_q_len))
-        self.input_placeholder = tf.placeholder(tf.int32, shape=(self.config.batch_size, self.max_input_len, self.max_sen_len))
+        self.question_placeholder = tf.placeholder(tf.int32, shape=(None, self.max_q_len))
+        self.input_placeholder = tf.placeholder(tf.int32, shape=(None, self.max_input_len, self.max_sen_len))
 
-        self.question_len_placeholder = tf.placeholder(tf.int32, shape=(self.config.batch_size,))
-        self.input_len_placeholder = tf.placeholder(tf.int32, shape=(self.config.batch_size,))
+        self.question_len_placeholder = tf.placeholder(tf.int32, shape=(None,))
+        self.input_len_placeholder = tf.placeholder(tf.int32, shape=(None,))
 
-        self.answer_placeholder = tf.placeholder(tf.int64, shape=(self.config.batch_size,))
+        self.answer_placeholder = tf.placeholder(tf.int64, shape=(None,))
 
-        self.rel_label_placeholder = tf.placeholder(tf.int32, shape=(self.config.batch_size, self.num_supporting_facts))
+        self.rel_label_placeholder = tf.placeholder(tf.int32, shape=(None, self.num_supporting_facts))
 
         self.dropout_placeholder = tf.placeholder(tf.float32)
 
@@ -300,6 +300,10 @@ class DMNPlus(object):
         p = np.random.permutation(len(data[0]))
         qp, ip, ql, il, im, a, r = data
         qp, ip, ql, il, im, a, r = qp[p], ip[p], ql[p], il[p], im[p], a[p], r[p] 
+
+        # Test Debugging
+        # for t_i in range(3):
+        #     print("Data[%s] qp: %s, ip: %s, ql: %s, il: %s, im: %s, a: %s, r: %s" % (t_i, qp[t_i], ip[t_i], ql[t_i], il[t_i], im[t_i], a[t_i], r[t_i]))
 
         for step in range(total_steps):
             index = list(range(step * config.batch_size, (step + 1) * config.batch_size))
