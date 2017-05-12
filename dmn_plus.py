@@ -54,6 +54,9 @@ class Config(object):
 
     train_mode = True
 
+    # sequence answer output
+    seq_answer = True
+
 
 def _add_gradient_noise(t, stddev=1e-3, name=None):
     """Adds gradient noise as described in http://arxiv.org/abs/1511.06807
@@ -89,6 +92,12 @@ class DMNPlus(object):
             self.test, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.num_supporting_facts, self.vocab_size = babi_input.load_babi(self.config, split_sentences=True)
         self.encoding = _position_encoding(self.max_sen_len, self.config.embed_size)
 
+        # TODO: remove hardcode later
+        # TODO: Add <EOS> as RNN Output later
+        if self.config.seq_answer:
+            # Max num of words in answer sentences (no need to add <GO> signal)
+            self.max_a_len = 3
+
     def add_placeholders(self):
         """add data placeholder to graph"""
         self.question_placeholder = tf.placeholder(tf.int32, shape=(None, self.max_q_len))
@@ -97,7 +106,11 @@ class DMNPlus(object):
         self.question_len_placeholder = tf.placeholder(tf.int32, shape=(None,))
         self.input_len_placeholder = tf.placeholder(tf.int32, shape=(None,))
 
-        self.answer_placeholder = tf.placeholder(tf.int64, shape=(None,))
+        if self.config.seq_answer:
+            # sequence answer output
+            self.answer_placeholder = tf.placeholder(tf.int32, shape=(None, self.max_a_len))
+        else:
+            self.answer_placeholder = tf.placeholder(tf.int64, shape=(None,))
 
         self.rel_label_placeholder = tf.placeholder(tf.int32, shape=(None, self.num_supporting_facts))
 
@@ -115,7 +128,11 @@ class DMNPlus(object):
         preds = tf.nn.softmax(output)
         pred = tf.argmax(preds, 1)
         return pred
-      
+
+    def get_seq_predictions(self, output):
+        # TODO complete sequence prediction function
+        return None
+
     def add_loss_op(self, output):
         """Calculate loss"""
         # optional strong supervision of attention with supporting facts
@@ -135,6 +152,10 @@ class DMNPlus(object):
         tf.summary.scalar('loss', loss)
 
         return loss
+
+    def add_seq_loss_op(self, output):
+        # TODO complete loss function for sequence answer output
+        return None
         
     def add_training_op(self, loss):
         """Calculate and apply gradients"""
@@ -242,6 +263,96 @@ class DMNPlus(object):
 
         return output
 
+    def add_seq_answer_module(self, rnn_output, q_vec):
+        """Sequential answer module
+        
+        Answer Module should be implemented as follows, refers to https://arxiv.org/abs/1506.07285 section 2.4:
+            y(t) = softmax(W(a)a(t))
+            a(t) = GRU([y(t-1), q], q(t-1))
+        
+        DMN+ answer sequence output implementation refers to:
+            https://github.com/YerevaNN/Dynamic-memory-networks-in-Theano/blob/master/dmn_batch.py
+
+        Implementing RNN using tf.scan() refers to:
+            http://r2rt.com/recurrent-neural-networks-in-tensorflow-ii.html
+                    
+        For RNN Decoder <GO> signal as GRU's x(0), refers to:
+            http://suriyadeepan.github.io/2016-06-28-easy-seq2seq/
+            https://arxiv.org/abs/1506.03099 section 4.3
+            https://github.com/suriyadeepan/practical_seq2seq/blob/master/seq2seq_wrapper.py
+            https://github.com/chiphuyen/tf-stanford-tutorials/blob/master/assignments/chatbot/model.py
+            https://github.com/tensorflow/models/tree/master/tutorials/rnn/translate
+        """
+
+        # TODO consider add into seperate vocab size for answer
+        # TODO add a seperate integer (not zero, which represents <PAD>/<EOS> for now) to represent <GO>
+        # TODO also add a seperate integer to represent <EOS> and use zero to represents <PAD>
+        # TODO try embeds decoder_inputs before passing to decoder RNN, refers to embedding_rnn_seq2seq in
+        #   https://github.com/tensorflow/tensorflow/blob/master/
+        #       tensorflow/contrib/legacy_seq2seq/python/ops/seq2seq.py
+
+        rnn_output = tf.nn.dropout(rnn_output, self.dropout_placeholder)
+
+        # step function to execute GRU
+        def gru_step_func(prev_step_output, current_elem):
+            """
+            Refers to http://r2rt.com/recurrent-neural-networks-in-tensorflow-ii.html
+
+            :param prev_step_output: (y(t-1), a(t-1)) or the initializer (y(0), a(0))
+                                     y(0) is <Go> signal, a(0) is the last memory (m(T(M)))                                     
+            :param current_elem: (q_vec)
+            :return: same structure as the initializer a(0)
+            """
+
+            # previous y, y(t-1): [batch_size x self.config.vocab_size]
+            # previous a, a(t-1): [batch_size x self.config.hidden_size(a)]
+            prev_y, prev_a = prev_step_output
+            q = current_elem
+
+            # [batch_size x self.config.vocab_size] + [batch_size x self.config.hidden_size]
+            #   => [batch_size x self.config.vocab_size + self.config.hidden_size]
+            gru_inputs = tf.concat([prev_y, q], 1)
+
+            # RNNCell __call__(inputs, state):
+            #   params:
+            #       inputs: [batch_size x input_size], input_size = self.config.vocab_size + self.config.hidden_size(q)
+            #       state:  [batch_size x self.state_size], self.state_size = self.config.hidden_size(a)
+            #   return: (Outputs, New State)
+            #       Outputs:    [batch_size x self.output_size], self.output_size = self.config.hidden_size(a)
+            #       New State:  [batch_size x self.state_size] self.config.hidden_size(a)
+            _, a = self.gru_cell(inputs=gru_inputs, state=prev_a)
+
+            # Implements y(t) = softmax(W(a)*a(t))
+            # Use dense layer to do matrix multiplication
+            y = tf.layers.dense(a,
+                                units=self.vocab_size,
+                                activation=tf.nn.softmax,
+                                use_bias=False)
+
+            return y, a
+
+        # For decoder inputs with GO signals (represented by zero for now)
+        #   Shape: [batch_size x self.config.vocab_size]
+        rnn_decoder_init_y_go = tf.zeros(shape=(tf.shape(self.answer_placeholder)[0], self.vocab_size))
+
+        # Since every step needs to concate y(t-1) and q, let's pass q_vec as inputs of tf.scan() to determine
+        #   Shape: [batch_size x self.config.hidden_size(q)]
+        rnn_inputs = tf.stack([q_vec for _ in range(self.max_a_len)])
+
+        # GRU's initial state is last memory a(0) = m(T(M))
+        #   Shape: [batch_size x self.config.hidden_size(m)]
+        last_memory = rnn_output
+
+        # initial values of tf.scan()
+        init_y_and_a = (rnn_decoder_init_y_go, last_memory)
+
+        y_rnn_outputs, _ = tf.scan(fn=gru_step_func,
+                                   elems=rnn_inputs,
+                                   initializer=init_y_and_a,
+                                   name='answer_decoder_rnn')
+
+        return y_rnn_outputs
+
     def inference(self):
         """Performs inference on the DMN model"""
 
@@ -282,7 +393,11 @@ class DMNPlus(object):
 
         # pass memory module output through linear answer module
         with tf.variable_scope("answer", initializer=tf.contrib.layers.xavier_initializer()):
-            output = self.add_answer_module(output, q_vec)
+            if self.config.seq_answer:
+                # sequence answer output
+                output = self.add_seq_answer_module(output, q_vec)
+            else:
+                output = self.add_answer_module(output, q_vec)
 
         return output
 
@@ -342,7 +457,12 @@ class DMNPlus(object):
         self.load_data(debug=False)
         self.add_placeholders()
         self.output = self.inference()
-        self.pred = self.get_predictions(self.output)
-        self.calculate_loss = self.add_loss_op(self.output)
+        if self.config.seq_answer:
+            # sequence answer output
+            self.pred = self.get_seq_predictions(self.output)
+            self.calculate_loss = self.add_seq_loss_op(self.output)
+        else:
+            self.pred = self.get_predictions(self.output)
+            self.calculate_loss = self.add_loss_op(self.output)
         self.train_step = self.add_training_op(self.calculate_loss)
         self.merged = tf.summary.merge_all()
