@@ -126,12 +126,10 @@ class DMNPlus(object):
 
     def get_predictions(self, output):
         preds = tf.nn.softmax(output)
-        pred = tf.argmax(preds, 1)
-        return pred
 
-    def get_seq_predictions(self, output):
-        # TODO complete sequence prediction function
-        return None
+        # for both single answer and sequence answer, the last dimension is the unit logits
+        pred = tf.argmax(preds, -1)
+        return pred
 
     def add_loss_op(self, output):
         """Calculate loss"""
@@ -142,6 +140,12 @@ class DMNPlus(object):
                 labels = tf.gather(tf.transpose(self.rel_label_placeholder), 0)
                 gate_loss += tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=att, labels=labels))
 
+        # TODO Consider using legacy_seq2seq.sequence_loss() or other weighting techniques for free-text answers
+        #   Ref: https://github.com/suriyadeepan/practical_seq2seq/blob/master/seq2seq_wrapper.py
+        #        http://www.wildml.com/2016/08/rnns-in-tensorflow-a-practical-guide-and-undocumented-features
+        #
+        # For loss of simple answers, no need to do weighting
+        # tf.reduce_sum can sum n-D cross entropy loss to a scalar
         loss = self.config.beta*tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=output, labels=self.answer_placeholder)) + gate_loss
 
         # add l2 regularization for all variables except biases
@@ -152,10 +156,6 @@ class DMNPlus(object):
         tf.summary.scalar('loss', loss)
 
         return loss
-
-    def add_seq_loss_op(self, output):
-        # TODO complete loss function for sequence answer output
-        return None
         
     def add_training_op(self, loss):
         """Calculate and apply gradients"""
@@ -438,7 +438,17 @@ class DMNPlus(object):
                 train_writer.add_summary(summary, num_epoch * total_steps + step)
 
             answers = a[step * config.batch_size: (step + 1) * config.batch_size]
-            accuracy += np.sum(pred == answers) / float(len(answers))
+
+            if self.config.seq_answer:
+                # For simplicity, the accuracy is defined as exact, full sequence match
+                #
+                # TODO for accuracy of more variable free-text consider weighting
+                #   Ref: http://www.wildml.com/2016/08/rnns-in-tensorflow-a-practical-guide-and-undocumented-features
+
+                matches = [np.array_equiv(pred_st, answers_st) for pred_st, answers_st in zip(pred, answers)]
+                accuracy += np.sum(matches) / float(len(answers))
+            else:
+                accuracy += np.sum(pred == answers) / float(len(answers))
 
             total_loss.append(loss)
             if verbose and step % verbose == 0:
@@ -457,12 +467,7 @@ class DMNPlus(object):
         self.load_data(debug=False)
         self.add_placeholders()
         self.output = self.inference()
-        if self.config.seq_answer:
-            # sequence answer output
-            self.pred = self.get_seq_predictions(self.output)
-            self.calculate_loss = self.add_seq_loss_op(self.output)
-        else:
-            self.pred = self.get_predictions(self.output)
-            self.calculate_loss = self.add_loss_op(self.output)
+        self.pred = self.get_predictions(self.output)
+        self.calculate_loss = self.add_loss_op(self.output)
         self.train_step = self.add_training_op(self.calculate_loss)
         self.merged = tf.summary.merge_all()

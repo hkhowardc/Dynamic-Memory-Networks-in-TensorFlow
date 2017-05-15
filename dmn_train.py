@@ -11,6 +11,7 @@ parser.add_argument("-s", "--strong_supervision", help="use labelled supporting 
 parser.add_argument("-t", "--dmn_type", help="specify type of dmn (default=original)")
 parser.add_argument("-l", "--l2_loss", type=float, default=0.001, help="specify l2 loss constant")
 parser.add_argument("-n", "--num_runs", type=int, help="specify the number of model runs")
+parser.add_argument("--sequence_answer", action='store_true', help="specify the model returns sequence answer")
 
 args = parser.parse_args()
 
@@ -24,6 +25,9 @@ else:
 
 if args.babi_task_id is not None:
     config.babi_id = args.babi_task_id
+
+config.seq_answer = args.sequence_answer
+print('config.seq_answer: ', config.seq_answer)
 
 config.babi_id = args.babi_task_id if args.babi_task_id is not None else str(1)
 config.l2 = args.l2_loss if args.l2_loss is not None else 0.001
