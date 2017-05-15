@@ -55,7 +55,7 @@ class Config(object):
     train_mode = True
 
     # sequence answer output
-    seq_answer = True
+    seq_answer = False
 
 
 def _add_gradient_noise(t, stddev=1e-3, name=None):

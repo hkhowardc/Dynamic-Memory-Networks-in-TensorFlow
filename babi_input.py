@@ -134,7 +134,8 @@ def process_word(word, word2vec, vocab, ivocab, word_vector_size, to_return="wor
         raise Exception("to_return = 'onehot' is not implemented yet")
 
 
-def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_sentences=False):
+def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_sentences=False,
+                  sentence_answer=False):
     questions = []
     inputs = []
     answers = []
@@ -179,13 +180,29 @@ def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_s
         else:
             inputs.append(np.vstack(inp_vector).astype(floatX))
         questions.append(np.vstack(q_vector).astype(floatX))
-        answers.append(process_word(word=x["A"],
-                                    word2vec=word2vec,
-                                    vocab=vocab,
-                                    ivocab=ivocab,
-                                    word_vector_size=embed_size,
-                                    to_return="index"))
-        # NOTE: here we assume the answer is one word! 
+
+        if sentence_answer:
+            # if answers are sentences, containing multiple words
+            a = x["A"].lower().split(' ')
+            a = [w for w in a if len(w) > 0]
+
+            a_vector = [process_word(word=w,
+                                     word2vec=word2vec,
+                                     vocab=vocab,
+                                     ivocab=ivocab,
+                                     word_vector_size=embed_size,
+                                     to_return="index") for w in a]
+            print('[DEBUG] %s => %s' % (a, a_vector))
+
+            answers.append(np.vstack(a_vector).astype(floatX))
+        else:
+            answers.append(process_word(word=x["A"],
+                                        word2vec=word2vec,
+                                        vocab=vocab,
+                                        ivocab=ivocab,
+                                        word_vector_size=embed_size,
+                                        to_return="index"))
+            # NOTE: here we assume the answer is one word!
 
         if not split_sentences:
             if input_mask_mode == 'word':
@@ -257,6 +274,14 @@ def create_embedding(word2vec, ivocab, embed_size):
     return embedding
 
 
+def convert_task_8_answers_to_sequences(data_raw):
+    for x in data_raw:
+        original_A = x["A"]
+        x["A"] = original_A.replace(',', ' ')
+
+        print('[DEBUG] %s => %s' % (original_A, x['A']))
+
+
 def load_babi(config, split_sentences=False):
     vocab = {}
     ivocab = {}
@@ -277,10 +302,17 @@ def load_babi(config, split_sentences=False):
                  word_vector_size=config.embed_size,
                  to_return="index")
 
+    if config.babi_id == '8' and config.seq_answer:
+        print("==> [config.seq_answer=%s] Convert comma ',' in task 8's answers to space ' '" % config.seq_answer)
+        convert_task_8_answers_to_sequences(babi_train_raw)
+        convert_task_8_answers_to_sequences(babi_test_raw)
+
     print('==> get train inputs')
-    train_data = process_input(babi_train_raw, config.floatX, word2vec, vocab, ivocab, config.embed_size, split_sentences)
+    train_data = process_input(babi_train_raw, config.floatX, word2vec, vocab, ivocab, config.embed_size,
+                               split_sentences, config.seq_answer)
     print('==> get test inputs')
-    test_data = process_input(babi_test_raw, config.floatX, word2vec, vocab, ivocab, config.embed_size, split_sentences)
+    test_data = process_input(babi_test_raw, config.floatX, word2vec, vocab, ivocab, config.embed_size,
+                              split_sentences, config.seq_answer)
 
     if config.word2vec_init:
         assert config.embed_size == 100
@@ -313,7 +345,20 @@ def load_babi(config, split_sentences=False):
 
     questions = pad_inputs(questions, q_lens, max_q_len)
 
-    answers = np.stack(answers)
+    if config.seq_answer:
+        a_lens = get_lens(answers)
+
+        max_a_len = np.max(a_lens)
+
+        # for debug
+        old_answers = answers
+
+        answers = pad_inputs(answers, a_lens, max_a_len)
+
+        for answer, pad_answer in zip(old_answers, answers):
+            print('[DEBUG] %s => %s' % (answer, pad_answer))
+    else:
+        answers = np.stack(answers)
 
     rel_labels = np.zeros((len(rel_labels), len(rel_labels[0])))
 
