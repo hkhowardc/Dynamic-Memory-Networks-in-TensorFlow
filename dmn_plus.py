@@ -153,13 +153,25 @@ class DMNPlus(object):
                 labels = tf.gather(tf.transpose(self.rel_label_placeholder), 0)
                 gate_loss += tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=att, labels=labels))
 
-        # TODO Consider using legacy_seq2seq.sequence_loss() or other weighting techniques for free-text answers
-        #   Ref: https://github.com/suriyadeepan/practical_seq2seq/blob/master/seq2seq_wrapper.py
-        #        http://www.wildml.com/2016/08/rnns-in-tensorflow-a-practical-guide-and-undocumented-features
-        #
-        # For loss of simple answers, no need to do weighting
-        # tf.reduce_sum can sum n-D cross entropy loss to a scalar
-        loss = self.config.beta*tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=output, labels=self.answer_placeholder)) + gate_loss
+        if self.config.seq_answer:
+            # TODO Consider using legacy_seq2seq.sequence_loss() or other weighting techniques for free-text answers
+            #   Ref: https://github.com/suriyadeepan/practical_seq2seq/blob/master/seq2seq_wrapper.py
+            #        http://www.wildml.com/2016/08/rnns-in-tensorflow-a-practical-guide-and-undocumented-features
+
+            # For loss of simple answers, no need to do weighting
+            # Check examples on xentropy loss for RNN output, most of them flatten RNN output first
+            output = tf.reshape(output, [-1, self.vocab_size])
+            expected = tf.reshape(self.answer_placeholder, [-1])
+            print('[DEBUG|add_loss_op] output<after reshape>.shape: %s' % output.shape)
+            print('[DEBUG|add_loss_op] output<after reshape>: %s' % output)
+            print('[DEBUG|add_loss_op] expected<after reshape>.shape: %s' % expected.shape)
+            print('[DEBUG|add_loss_op] expected<after reshape>: %s' % expected)
+
+            output_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=output, labels=expected))
+
+            loss = self.config.beta * output_loss + gate_loss
+        else:
+            loss = self.config.beta*tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=output, labels=self.answer_placeholder)) + gate_loss
 
         # add l2 regularization for all variables except biases
         for v in tf.trainable_variables():
