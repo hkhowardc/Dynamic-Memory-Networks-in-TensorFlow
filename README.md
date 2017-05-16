@@ -58,7 +58,11 @@ Below are the full results for each bAbI task (tasks where both implementations 
 | 18 | 2.2 | 2.1 |
 
 ## Notes on Python 3 (python3) branch
-20170508 Modified to support python 3 
+| Date | Commit | Description |
+| :---: | :---: | :---: |
+| 20170508 | 459b4d4d0fdefcf7f774ff6c2f79b7823ceb36a1 | Modified to support python 3 |
 
 ## Notes on Python 3 Enhancement (py3_eh) branch
-20170515 Regression Test Done, answer by classification feature is workable after adding sequence answer option
+| Date | Commit | Description |
+| :---: | :---: | :---: |
+| 20170515 | cae6d25ada61d0d3b1c8dcc8dcf8a52a113b6b30 | Regression Test Done, answer by classification feature is workable after adding sequence answer option |
