@@ -24,8 +24,7 @@ class Config(object):
     # early_stopping = 20
     early_stopping = 200
 
-    # dropout = 0.9
-    dropout = 0.7
+    dropout = 0.9
     lr = 0.001
     l2 = 0.001
 
@@ -41,8 +40,7 @@ class Config(object):
     strong_supervision = False
     beta = 1
 
-    # drop_grus = False
-    drop_grus = True
+    drop_grus = False
 
     anneal_threshold = 1000
     anneal_by = 1.5
