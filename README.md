@@ -67,3 +67,9 @@ Below are the full results for each bAbI task (tasks where both implementations 
 | :---: | :---: | :---: |
 | 20170515 | cae6d25ada61d0d3b1c8dcc8dcf8a52a113b6b30 | Regression Test Done, answer by classification feature is workable after adding sequence answer option |
 | 20170515 | e778e0760d50f004ade6f802e28fe4fc8e5072d5 | Trained with increased dropout (config.dropout=0.7 and config.drop_grus=True). Model takes more time to reach near 100% accuracy. Verified using task 1 and task 8 |
+
+## Model Versions
+| Date | Tag | Description | Remarks |
+| :---: | :---: | :---: | :---: | 
+| 20170510 | py3_v_0.1_batch_size_none | Use None as the batch_size dimension when defining placeholder | -- |
+| 20170515 | py3_v_0.2_add_seq_answer_option | Add sequence answer option | Not yet verified |
