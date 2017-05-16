@@ -186,7 +186,10 @@ class DMNPlus(object):
 
     def get_question_representation(self, embeddings):
         """Get question vectors via embedding and GRU"""
-        questions = tf.nn.embedding_lookup(embeddings, self.question_placeholder)
+
+        # TODO hardcode CPU first
+        with tf.device("/cpu:0"):
+            questions = tf.nn.embedding_lookup(embeddings, self.question_placeholder)
 
         _, q_vec = tf.nn.dynamic_rnn(self.gru_cell,
                                      questions,
@@ -198,7 +201,9 @@ class DMNPlus(object):
     def get_input_representation(self, embeddings):
         """Get fact (sentence) vectors via embedding, positional encoding and bi-directional GRU"""
         # get word vectors from embedding
-        inputs = tf.nn.embedding_lookup(embeddings, self.input_placeholder)
+        # TODO hardcode CPU first
+        with tf.device("/cpu:0"):
+            inputs = tf.nn.embedding_lookup(embeddings, self.input_placeholder)
 
         # use encoding to get sentence representation
         inputs = tf.reduce_sum(inputs * self.encoding, 2)
@@ -386,6 +391,7 @@ class DMNPlus(object):
         """Performs inference on the DMN model"""
 
         # set up embedding
+        # TODO try lock the embedding weights if it is initialized with glove vectors (i.e. word2vec_init=True)
         embeddings = tf.Variable(self.word_embedding.astype(np.float32), name="Embedding")
          
         # input fusion module
@@ -512,12 +518,14 @@ class DMNPlus(object):
         return np.mean(total_loss), accuracy/float(total_steps)
 
     def __init__(self, config):
-        self.config = config
-        self.variables_to_save = {}
-        self.load_data(debug=False)
-        self.add_placeholders()
-        self.output = self.inference()
-        self.pred = self.get_predictions(self.output)
-        self.calculate_loss = self.add_loss_op(self.output)
-        self.train_step = self.add_training_op(self.calculate_loss)
-        self.merged = tf.summary.merge_all()
+        # TODO Hardcode GPU first
+        with tf.device("/gpu:0"):
+            self.config = config
+            self.variables_to_save = {}
+            self.load_data(debug=False)
+            self.add_placeholders()
+            self.output = self.inference()
+            self.pred = self.get_predictions(self.output)
+            self.calculate_loss = self.add_loss_op(self.output)
+            self.train_step = self.add_training_op(self.calculate_loss)
+            self.merged = tf.summary.merge_all()
