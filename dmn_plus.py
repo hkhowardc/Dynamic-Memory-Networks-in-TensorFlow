@@ -15,12 +15,14 @@ class Config(object):
     batch_size = 100
     # embed_size = 80
     embed_size = 100
-    hidden_size = 80
+    # hidden_size = 80
+    hidden_size = 256
 
     # max_epochs = 256
     max_epochs = 4096
 
-    early_stopping = 20
+    # early_stopping = 20
+    early_stopping = 200
 
     # dropout = 0.9
     dropout = 0.7
@@ -131,8 +133,15 @@ class DMNPlus(object):
     def get_predictions(self, output):
         preds = tf.nn.softmax(output)
 
+        print('[get_predictions|get_predictions] preds.shape: %s' % preds.shape)
+        print('[get_predictions|get_predictions] preds: %s' % preds)
+
         # for both single answer and sequence answer, the last dimension is the unit logits
         pred = tf.argmax(preds, -1)
+
+        print('[DEBUG|get_predictions] pred<after argmax>.shape: %s' % pred.shape)
+        print('[DEBUG|get_predictions] pred<after argmax>: %s' % pred)
+
         return pred
 
     def add_loss_op(self, output):
@@ -264,6 +273,8 @@ class DMNPlus(object):
         output = tf.layers.dense(tf.concat([rnn_output, q_vec], 1),
                                  self.vocab_size,
                                  activation=None)
+        print('[DEBUG|add_answer_module] output.shape: %s' % output.shape)
+        print('[DEBUG|add_answer_module] output: %s' % output)
 
         return output
 
@@ -338,14 +349,20 @@ class DMNPlus(object):
         # For decoder inputs with GO signals (represented by zero for now)
         #   Shape: [batch_size x self.config.vocab_size]
         rnn_decoder_init_y_go = tf.zeros(shape=(tf.shape(self.answer_placeholder)[0], self.vocab_size))
+        print('[DEBUG|add_seq_answer_module] rnn_decoder_init_y_go.shape: %s' % rnn_decoder_init_y_go.shape)
+        print('[DEBUG|add_seq_answer_module] rnn_decoder_init_y_go: %s' % rnn_decoder_init_y_go)
 
         # Since every step needs to concate y(t-1) and q, let's pass q_vec as inputs of tf.scan() to determine
-        #   Shape: [batch_size x self.config.hidden_size(q)]
+        #   Shape: [answer length x batch_size x self.config.hidden_size(q)]
         rnn_inputs = tf.stack([q_vec for _ in range(self.max_a_len)])
+        print('[DEBUG|add_seq_answer_module] rnn_inputs.shape: %s' % rnn_inputs.shape)
+        print('[DEBUG|add_seq_answer_module] rnn_inputs: %s' % rnn_inputs)
 
         # GRU's initial state is last memory a(0) = m(T(M))
         #   Shape: [batch_size x self.config.hidden_size(m)]
         last_memory = rnn_output
+        print('[DEBUG|add_seq_answer_module] last_memory.shape: %s' % last_memory.shape)
+        print('[DEBUG|add_seq_answer_module] last_memory: %s' % last_memory)
 
         # initial values of tf.scan()
         init_y_and_a = (rnn_decoder_init_y_go, last_memory)
@@ -354,6 +371,14 @@ class DMNPlus(object):
                                    elems=rnn_inputs,
                                    initializer=init_y_and_a,
                                    name='answer_decoder_rnn')
+        print('[DEBUG|add_seq_answer_module] y_rnn_outputs.shape: %s' % y_rnn_outputs.shape)
+        print('[DEBUG|add_seq_answer_module] y_rnn_outputs: %s' % y_rnn_outputs)
+
+        # Shape: [answer length x batch_size x self.config.vocab_size] =>
+        #           [batch_size x answer length x self.config.vocab_size]
+        y_rnn_outputs = tf.transpose(y_rnn_outputs, [1, 0, 2])
+        print('[DEBUG|add_seq_answer_module] y_rnn_outputs<after transpose>.shape: %s' % y_rnn_outputs.shape)
+        print('[DEBUG|add_seq_answer_module] y_rnn_outputs<after transpose>: %s' % y_rnn_outputs)
 
         return y_rnn_outputs
 
@@ -405,6 +430,19 @@ class DMNPlus(object):
 
         return output
 
+    # def count_unordered_matches(self, pred_sent, expected_sent):
+    #
+    #     expected_word_set = set(expected_sent.tolist())
+    #
+    #     match_count = 0
+    #     for word_idx in pred_sent:
+    #         if word_idx in expected_word_set:
+    #             match_count += 1
+    #
+    #     print('[DEBUG] %s vs %s => %s' % (pred_sent, expected_sent, match_count))
+    #
+    #     return match_count
+
     def run_epoch(self, session, data, num_epoch=0, train_writer=None, train_op=None, verbose=2, train=False):
         config = self.config
         dp = config.dropout
@@ -448,6 +486,14 @@ class DMNPlus(object):
                 #
                 # TODO for accuracy of more variable free-text consider weighting
                 #   Ref: http://www.wildml.com/2016/08/rnns-in-tensorflow-a-practical-guide-and-undocumented-features
+
+                # unordered_matches = [self.count_unordered_matches(pred_st, answers_st)
+                #                      for pred_st, answers_st in zip(pred, answers)]
+                # accuracy_unordered = np.sum(unordered_matches) / float(len(answers) * self.max_a_len)
+                # print('accuracy_unordered (total %s answers): %s' % (len(answers), accuracy_unordered))
+
+                # for pred_st, answers_st in zip(pred, answers):
+                #     print('%s vs %s => %s' % (pred_st, answers_st, np.array_equiv(pred_st, answers_st)))
 
                 matches = [np.array_equiv(pred_st, answers_st) for pred_st, answers_st in zip(pred, answers)]
                 accuracy += np.sum(matches) / float(len(answers))
