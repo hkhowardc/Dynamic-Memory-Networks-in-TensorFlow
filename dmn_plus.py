@@ -17,10 +17,13 @@ class Config(object):
     embed_size = 100
     hidden_size = 80
 
+    # max_epochs = 256
     max_epochs = 4096
+
     early_stopping = 20
 
-    dropout = 0.9
+    # dropout = 0.9
+    dropout = 0.7
     lr = 0.001
     l2 = 0.001
 
@@ -36,7 +39,8 @@ class Config(object):
     strong_supervision = False
     beta = 1
 
-    drop_grus = False
+    # drop_grus = False
+    drop_grus = True
 
     anneal_threshold = 1000
     anneal_by = 1.5
