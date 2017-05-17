@@ -34,6 +34,7 @@ class Config(object):
 
     # word2vec_init = False
     word2vec_init = True
+    lock_word2vec_weights = True
     embedding_init = np.sqrt(3) 
 
     # set to zero with strong supervision to only train gates
@@ -426,8 +427,16 @@ class DMNPlus(object):
         """Performs inference on the DMN model"""
 
         # set up embedding
-        # TODO try lock the embedding weights if it is initialized with glove vectors (i.e. word2vec_init=True)
-        embeddings = tf.Variable(self.word_embedding.astype(np.float32), name="Embedding")
+        #   lock the embedding weights if it is initialized with glove vectors (i.e. word2vec_init=True)
+        embeddings_trainable = True
+        if self.config.word2vec_init and self.config.lock_word2vec_weights:
+            embeddings_trainable = False
+        print('[DEBUG|inference] word2vec_init: %s + lock_word2vec_weights: %s '
+              '=> embeddings_trainable: %s' %
+              (self.config.word2vec_init, self.config.lock_word2vec_weights, embeddings_trainable))
+        embeddings = tf.Variable(self.word_embedding.astype(np.float32),
+                                 trainable=embeddings_trainable,
+                                 name="Embedding")
          
         # input fusion module
         with tf.variable_scope("question", initializer=tf.contrib.layers.xavier_initializer()):
