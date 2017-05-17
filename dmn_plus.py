@@ -195,7 +195,8 @@ class DMNPlus(object):
             # https://github.com/suriyadeepan/practical_seq2seq/blob/master/seq2seq_wrapper.py
             output_loss = tf.contrib.legacy_seq2seq.sequence_loss(logits=ts_output_list,
                                                                   targets=ts_target_list,
-                                                                  weights=ts_weight_list)
+                                                                  weights=ts_weight_list,
+                                                                  average_across_batch=False)
 
             loss = self.config.beta * output_loss + gate_loss
         else:
