@@ -129,16 +129,30 @@ class DMNPlus(object):
                                                           output_keep_prob=self.dropout_placeholder)
 
     def get_predictions(self, output):
-        preds = tf.nn.softmax(output)
 
-        print('[get_predictions|get_predictions] preds.shape: %s' % preds.shape)
-        print('[get_predictions|get_predictions] preds: %s' % preds)
+        if self.config.seq_answer:
+            print('[DEBUG|get_predictions] output<before transpose>.shape: %s' % output.shape)
+            print('[DEBUG|get_predictions] output<before transpose>: %s' % output)
 
-        # for both single answer and sequence answer, the last dimension is the unit logits
-        pred = tf.argmax(preds, -1)
+            # Shape: [answer length x batch_size x self.config.vocab_size] =>
+            #           [batch_size x answer length x self.config.vocab_size]
+            output = tf.transpose(output, [1, 0, 2])
+            print('[DEBUG|get_predictions] output<after transpose>.shape: %s' % output.shape)
+            print('[DEBUG|get_predictions] output<after transpose>: %s' % output)
 
-        print('[DEBUG|get_predictions] pred<after argmax>.shape: %s' % pred.shape)
-        print('[DEBUG|get_predictions] pred<after argmax>: %s' % pred)
+            preds = tf.nn.softmax(output)
+            print('[DEBUG|get_predictions] preds.shape: %s' % preds.shape)
+            print('[DEBUG|get_predictions] preds: %s' % preds)
+
+            # for both single answer and sequence answer, the last dimension is the unit logits
+            pred = tf.argmax(preds, -1)
+            print('[DEBUG|get_predictions] pred<after argmax>.shape: %s' % pred.shape)
+            print('[DEBUG|get_predictions] pred<after argmax>: %s' % pred)
+
+        else:
+            # for answer classification output as per the original implementation
+            preds = tf.nn.softmax(output)
+            pred = tf.argmax(preds, 1)
 
         return pred
 
@@ -152,20 +166,35 @@ class DMNPlus(object):
                 gate_loss += tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=att, labels=labels))
 
         if self.config.seq_answer:
-            # TODO Consider using legacy_seq2seq.sequence_loss() or other weighting techniques for free-text answers
-            #   Ref: https://github.com/suriyadeepan/practical_seq2seq/blob/master/seq2seq_wrapper.py
-            #        http://www.wildml.com/2016/08/rnns-in-tensorflow-a-practical-guide-and-undocumented-features
 
-            # For loss of simple answers, no need to do weighting
-            # Check examples on xentropy loss for RNN output, most of them flatten RNN output first
-            output = tf.reshape(output, [-1, self.vocab_size])
-            expected = tf.reshape(self.answer_placeholder, [-1])
-            print('[DEBUG|add_loss_op] output<after reshape>.shape: %s' % output.shape)
-            print('[DEBUG|add_loss_op] output<after reshape>: %s' % output)
-            print('[DEBUG|add_loss_op] expected<after reshape>.shape: %s' % expected.shape)
-            print('[DEBUG|add_loss_op] expected<after reshape>: %s' % expected)
+            # Split the answer rnn output by time step
+            # Shape: [answer length x batch_size x self.config.vocab_size] =>
+            #           [batch_size x self.config.vocab_size] x answer length
+            ts_output_list = [ts_output for ts_output in tf.unstack(output, axis=0)]
+            print('[DEBUG|add_loss_op] ts_output_list: %s' % ts_output_list)
 
-            output_loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=output, labels=expected))
+            # Convert Answer targets to grouped by time steps
+            # Shape: [batch_size x answer length] =>
+            #           [answer length x batch_size]
+            targets_per_ts = tf.transpose(self.answer_placeholder, [1, 0])
+            print('[DEBUG|add_loss_op] targets_per_ts: %s' % targets_per_ts)
+
+            # Split the time-step-grouped answer targets
+            # Shape: [answer length x batch_size] =>
+            #           [batch_size] x answer length
+            ts_target_list = [ts_target for ts_target in tf.unstack(targets_per_ts, axis=0)]
+            print('[DEBUG|add_loss_op] ts_target_list: %s' % ts_target_list)
+
+            # weights is 1D batch-sized float tensor
+            ts_weight_list = [tf.ones_like(ts_t, dtype=tf.float32) for ts_t in ts_target_list]
+            print('[DEBUG|add_loss_op] ts_weight_list: %s' % ts_weight_list)
+
+            # Tried tf.sequence_loss() as calculating xentropy against flattened rnn output and targets does not help
+            # Also, many rnn output calculation takes a mean of xentropy loss instead of sum them up
+            # https://github.com/suriyadeepan/practical_seq2seq/blob/master/seq2seq_wrapper.py
+            output_loss = tf.contrib.legacy_seq2seq.sequence_loss(logits=ts_output_list,
+                                                                  targets=ts_target_list,
+                                                                  weights=ts_weight_list)
 
             loss = self.config.beta * output_loss + gate_loss
         else:
@@ -350,7 +379,9 @@ class DMNPlus(object):
             #   return: (Outputs, New State)
             #       Outputs:    [batch_size x self.output_size], self.output_size = self.config.hidden_size(a)
             #       New State:  [batch_size x self.state_size] self.config.hidden_size(a)
-            _, a = self.gru_cell(inputs=gru_inputs, state=prev_a)
+            gru_y, a = self.gru_cell(inputs=gru_inputs, state=prev_a)
+            print('[DEBUG|add_seq_answer_module] gru_y.shape: %s' % gru_y.shape)
+            print('[DEBUG|add_seq_answer_module] gru_y: %s' % gru_y)
 
             # Implements y(t) = softmax(W(a)*a(t))
             # Use dense layer to do matrix multiplication
@@ -388,12 +419,6 @@ class DMNPlus(object):
                                    name='answer_decoder_rnn')
         print('[DEBUG|add_seq_answer_module] y_rnn_outputs.shape: %s' % y_rnn_outputs.shape)
         print('[DEBUG|add_seq_answer_module] y_rnn_outputs: %s' % y_rnn_outputs)
-
-        # Shape: [answer length x batch_size x self.config.vocab_size] =>
-        #           [batch_size x answer length x self.config.vocab_size]
-        y_rnn_outputs = tf.transpose(y_rnn_outputs, [1, 0, 2])
-        print('[DEBUG|add_seq_answer_module] y_rnn_outputs<after transpose>.shape: %s' % y_rnn_outputs.shape)
-        print('[DEBUG|add_seq_answer_module] y_rnn_outputs<after transpose>: %s' % y_rnn_outputs)
 
         return y_rnn_outputs
 
