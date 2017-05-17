@@ -92,16 +92,10 @@ class DMNPlus(object):
     def load_data(self, debug=False):
         """Loads train/valid/test data and sentence encoding"""
         if self.config.train_mode:
-            self.train, self.valid, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.num_supporting_facts, self.vocab_size = babi_input.load_babi(self.config, split_sentences=True)
+            self.train, self.valid, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.max_a_len, self.num_supporting_facts, self.vocab_size = babi_input.load_babi(self.config, split_sentences=True)
         else:
-            self.test, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.num_supporting_facts, self.vocab_size = babi_input.load_babi(self.config, split_sentences=True)
+            self.test, self.word_embedding, self.max_q_len, self.max_input_len, self.max_sen_len, self.max_a_len, self.num_supporting_facts, self.vocab_size = babi_input.load_babi(self.config, split_sentences=True)
         self.encoding = _position_encoding(self.max_sen_len, self.config.embed_size)
-
-        # TODO: remove hardcode later
-        # TODO: Add <EOS> as RNN Output later
-        if self.config.seq_answer:
-            # Max num of words in answer sentences (no need to add <GO> signal)
-            self.max_a_len = 3
 
     def add_placeholders(self):
         """add data placeholder to graph"""
@@ -531,6 +525,7 @@ class DMNPlus(object):
                 train_writer.add_summary(summary, num_epoch * total_steps + step)
 
             answers = a[step * config.batch_size: (step + 1) * config.batch_size]
+            # print('[DEBUG] a[index] == answers: %s' % (np.array_equiv(a[index], answers)))
 
             if self.config.seq_answer:
                 # For simplicity, the accuracy is defined as exact, full sequence match
@@ -544,7 +539,7 @@ class DMNPlus(object):
                 # print('accuracy_unordered (total %s answers): %s' % (len(answers), accuracy_unordered))
 
                 # for pred_st, answers_st in zip(pred, answers):
-                #     print('%s vs %s => %s' % (pred_st, answers_st, np.array_equiv(pred_st, answers_st)))
+                #     print('[DEBUG] %s vs %s => %s' % (pred_st, answers_st, np.array_equiv(pred_st, answers_st)))
 
                 matches = [np.array_equiv(pred_st, answers_st) for pred_st, answers_st in zip(pred, answers)]
                 accuracy += np.sum(matches) / float(len(answers))

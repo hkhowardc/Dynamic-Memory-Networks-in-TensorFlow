@@ -192,7 +192,7 @@ def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_s
                                      ivocab=ivocab,
                                      word_vector_size=embed_size,
                                      to_return="index") for w in a]
-            print('[DEBUG] %s => %s' % (a, a_vector))
+            print('[DEBUG] word-to-index: %s => %s' % (a, a_vector))
 
             answers.append(np.vstack(a_vector).astype(floatX))
         else:
@@ -348,6 +348,7 @@ def load_babi(config, split_sentences=False):
     if config.seq_answer:
         a_lens = get_lens(answers)
 
+        # TODO: Add <EOS> as RNN Output later
         max_a_len = np.max(a_lens)
 
         # # for debug
@@ -358,6 +359,9 @@ def load_babi(config, split_sentences=False):
         # for answer, pad_answer in zip(old_answers, answers):
         #     print('[DEBUG] %s => %s' % (answer, pad_answer))
     else:
+        # for answer module with classification, default to 1
+        max_a_len = 1
+
         answers = np.stack(answers)
 
     rel_labels = np.zeros((len(rel_labels), len(rel_labels[0])))
@@ -369,8 +373,8 @@ def load_babi(config, split_sentences=False):
         train = questions[:config.num_train], inputs[:config.num_train], q_lens[:config.num_train], input_lens[:config.num_train], input_masks[:config.num_train], answers[:config.num_train], rel_labels[:config.num_train] 
 
         valid = questions[config.num_train:], inputs[config.num_train:], q_lens[config.num_train:], input_lens[config.num_train:], input_masks[config.num_train:], answers[config.num_train:], rel_labels[config.num_train:] 
-        return train, valid, word_embedding, max_q_len, max_input_len, max_mask_len, rel_labels.shape[1], len(vocab)
+        return train, valid, word_embedding, max_q_len, max_input_len, max_mask_len, max_a_len, rel_labels.shape[1], len(vocab)
 
     else:
         test = questions, inputs, q_lens, input_lens, input_masks, answers, rel_labels
-        return test, word_embedding, max_q_len, max_input_len, max_mask_len, rel_labels.shape[1], len(vocab)
+        return test, word_embedding, max_q_len, max_input_len, max_mask_len, max_a_len, rel_labels.shape[1], len(vocab)

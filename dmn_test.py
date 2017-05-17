@@ -4,6 +4,7 @@ import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("-b", "--babi_task_id", help="specify babi task 1-20 (default=1)")
 parser.add_argument("-t", "--dmn_type", help="specify type of dmn (default=original)")
+parser.add_argument("--sequence_answer", action='store_true', help="specify the model returns sequence answer")
 args = parser.parse_args()
 
 dmn_type = args.dmn_type if args.dmn_type is not None else "plus"
@@ -16,6 +17,9 @@ else:
 
 if args.babi_task_id is not None:
     config.babi_id = args.babi_task_id
+
+config.seq_answer = args.sequence_answer
+print('Sequence Answers: ', config.seq_answer)
 
 config.strong_supervision = False
 
