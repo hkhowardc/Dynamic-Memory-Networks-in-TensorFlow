@@ -279,7 +279,7 @@ def convert_task_8_answers_to_sequences(data_raw):
         original_A = x["A"]
         x["A"] = original_A.replace(',', ' ')
 
-        print('[DEBUG] %s => %s' % (original_A, x['A']))
+        # print('[DEBUG] %s => %s' % (original_A, x['A']))
 
 
 def load_babi(config, split_sentences=False):
@@ -350,13 +350,13 @@ def load_babi(config, split_sentences=False):
 
         max_a_len = np.max(a_lens)
 
-        # for debug
-        old_answers = answers
+        # # for debug
+        # old_answers = answers
 
         answers = pad_inputs(answers, a_lens, max_a_len)
 
-        for answer, pad_answer in zip(old_answers, answers):
-            print('[DEBUG] %s => %s' % (answer, pad_answer))
+        # for answer, pad_answer in zip(old_answers, answers):
+        #     print('[DEBUG] %s => %s' % (answer, pad_answer))
     else:
         answers = np.stack(answers)
 
