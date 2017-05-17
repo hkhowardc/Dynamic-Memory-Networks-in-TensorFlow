@@ -33,7 +33,7 @@ print('==> initializing variables')
 init = tf.global_variables_initializer()
 saver = tf.train.Saver()
 
-with tf.Session() as session:
+with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as session:
     session.run(init)
 
     print('==> restoring weights')
