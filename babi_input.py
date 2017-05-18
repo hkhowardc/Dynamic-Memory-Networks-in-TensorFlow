@@ -302,7 +302,7 @@ def load_babi(config, split_sentences=False):
                  word_vector_size=config.embed_size,
                  to_return="index")
 
-    if config.babi_id == '8' and config.seq_answer:
+    if config.babi_id in ('8', 'sh8', 'joint') and config.seq_answer:
         print("==> [config.seq_answer=%s] Convert comma ',' in task 8's answers to space ' '" % config.seq_answer)
         convert_task_8_answers_to_sequences(babi_train_raw)
         convert_task_8_answers_to_sequences(babi_test_raw)
