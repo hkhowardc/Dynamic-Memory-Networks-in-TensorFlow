@@ -375,9 +375,7 @@ class DMNPlus(object):
             #   return: (Outputs, New State)
             #       Outputs:    [batch_size x self.output_size], self.output_size = self.config.hidden_size(a)
             #       New State:  [batch_size x self.state_size] self.config.hidden_size(a)
-            gru_y, a = self.gru_cell(inputs=gru_inputs, state=prev_a)
-            print('[DEBUG|add_seq_answer_module] gru_y.shape: %s' % gru_y.shape)
-            print('[DEBUG|add_seq_answer_module] gru_y: %s' % gru_y)
+            _, a = self.gru_cell(inputs=gru_inputs, state=prev_a)
 
             # Implements y(t) = softmax(W(a)*a(t))
             # Use dense layer to do matrix multiplication
