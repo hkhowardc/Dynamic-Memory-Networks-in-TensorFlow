@@ -320,22 +320,22 @@ class DMNPlus(object):
 
         return output
 
-    def add_seq_answer_module2(self, rnn_output, q_vec):
+    def add_seq_answer_module(self, rnn_output, q_vec):
 
         # For decoder inputs with GO signals (represented by zero for now)
         #   Shape: [batch_size x self.config.vocab_size]
         rnn_decoder_init_y_go = tf.zeros(shape=(tf.shape(self.answer_placeholder)[0], self.vocab_size))
-        print('[DEBUG|add_seq_answer_module2] rnn_decoder_init_y_go: %s' % rnn_decoder_init_y_go)
+        print('[DEBUG|add_seq_answer_module] rnn_decoder_init_y_go: %s' % rnn_decoder_init_y_go)
 
         # this control the number of iteration, since loop_function is used, the rnn_decoder only
         # takes the first signals
         rnn_inputs = [rnn_decoder_init_y_go for _ in range(self.max_a_len)]
-        print('[DEBUG|add_seq_answer_module2] rnn_inputs: %s' % rnn_inputs)
+        print('[DEBUG|add_seq_answer_module] rnn_inputs: %s' % rnn_inputs)
 
         # GRU's initial state is last memory a(0) = m(T(M))
         #   Shape: [batch_size x self.config.hidden_size(m)]
         last_memory = rnn_output
-        print('[DEBUG|add_seq_answer_module2] last_memory: %s' % last_memory)
+        print('[DEBUG|add_seq_answer_module] last_memory: %s' % last_memory)
 
         gru_cell_a = AnswerGRUWrapper(gru=self.gru_cell,
                                       q_vec=q_vec,
@@ -362,7 +362,9 @@ class DMNPlus(object):
 
         return y_rnn_outputs
 
-    def add_seq_answer_module(self, rnn_output, q_vec):
+    def add_seq_answer_module_old(self, rnn_output, q_vec):
+        # TODO to be removed
+
         """Sequential answer module
         
         Answer Module should be implemented as follows, refers to https://arxiv.org/abs/1506.07285 section 2.4:
@@ -523,8 +525,7 @@ class DMNPlus(object):
         with tf.variable_scope("answer", initializer=tf.contrib.layers.xavier_initializer()):
             if self.config.seq_answer:
                 # sequence answer output
-                # output = self.add_seq_answer_module(output, q_vec)
-                output = self.add_seq_answer_module2(output, q_vec)
+                output = self.add_seq_answer_module(output, q_vec)
             else:
                 output = self.add_answer_module(output, q_vec)
 
