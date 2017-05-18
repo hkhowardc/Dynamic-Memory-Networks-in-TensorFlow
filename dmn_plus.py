@@ -3,7 +3,9 @@ import sys
 import numpy as np
 
 import tensorflow as tf
+from tensorflow.contrib.legacy_seq2seq.python.ops.seq2seq import rnn_decoder
 from attention_gru_cell import AttentionGRUCell
+from answer_gru_cell import AnswerGRUWrapper
 
 
 import babi_input
@@ -318,6 +320,48 @@ class DMNPlus(object):
 
         return output
 
+    def add_seq_answer_module2(self, rnn_output, q_vec):
+
+        # For decoder inputs with GO signals (represented by zero for now)
+        #   Shape: [batch_size x self.config.vocab_size]
+        rnn_decoder_init_y_go = tf.zeros(shape=(tf.shape(self.answer_placeholder)[0], self.vocab_size))
+        print('[DEBUG|add_seq_answer_module2] rnn_decoder_init_y_go: %s' % rnn_decoder_init_y_go)
+
+        # this control the number of iteration, since loop_function is used, the rnn_decoder only
+        # takes the first signals
+        rnn_inputs = [rnn_decoder_init_y_go for _ in range(self.max_a_len)]
+        print('[DEBUG|add_seq_answer_module2] rnn_inputs: %s' % rnn_inputs)
+
+        # GRU's initial state is last memory a(0) = m(T(M))
+        #   Shape: [batch_size x self.config.hidden_size(m)]
+        last_memory = rnn_output
+        print('[DEBUG|add_seq_answer_module2] last_memory: %s' % last_memory)
+
+        gru_cell_a = AnswerGRUWrapper(gru=self.gru_cell,
+                                      q_vec=q_vec,
+                                      vocab_size=self.vocab_size)
+
+        # If not None, this function will be applied to the i-th output
+        # in order to generate the i+1-st input, and decoder_inputs will be ignored,
+        # except for the first element ("GO" symbol).
+        def decoder_loop_fn(prev, i):
+            return prev
+
+        d_outputs, d_states = rnn_decoder(decoder_inputs=rnn_inputs,
+                                          initial_state=last_memory,
+                                          cell=gru_cell_a,
+                                          loop_function=decoder_loop_fn)
+        print('[DEBUG|add_seq_answer_module] d_outputs: %s' % d_outputs)
+        print('[DEBUG|add_seq_answer_module] d_states: %s' % d_states)
+
+        # TODO if this method works, refactor and pass list of 2D batch-sized outputs
+        # Shape: [batch_size x self.config.vocab_size] x answer length =>
+        #           [answer length x batch_size x self.config.vocab_size]
+        y_rnn_outputs = tf.stack(d_outputs)
+        print('[DEBUG|add_seq_answer_module] y_rnn_outputs: %s' % y_rnn_outputs)
+
+        return y_rnn_outputs
+
     def add_seq_answer_module(self, rnn_output, q_vec):
         """Sequential answer module
         
@@ -479,7 +523,8 @@ class DMNPlus(object):
         with tf.variable_scope("answer", initializer=tf.contrib.layers.xavier_initializer()):
             if self.config.seq_answer:
                 # sequence answer output
-                output = self.add_seq_answer_module(output, q_vec)
+                # output = self.add_seq_answer_module(output, q_vec)
+                output = self.add_seq_answer_module2(output, q_vec)
             else:
                 output = self.add_answer_module(output, q_vec)
 
