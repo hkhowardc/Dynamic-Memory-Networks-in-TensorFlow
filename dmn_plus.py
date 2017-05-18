@@ -395,6 +395,8 @@ class DMNPlus(object):
         # Since every step needs to concate y(t-1) and q, let's pass q_vec as inputs of tf.scan() to determine
         #   Shape: [answer length x batch_size x self.config.hidden_size(q)]
         rnn_inputs = tf.stack([q_vec for _ in range(self.max_a_len)])
+        # 20170518 Tried using zero question vector to train task 1 with answer a + 'la' but poor training speed
+        # rnn_inputs = tf.stack([tf.zeros_like(q_vec)] + [q_vec for _ in range(self.max_a_len - 1)])
         print('[DEBUG|add_seq_answer_module] rnn_inputs.shape: %s' % rnn_inputs.shape)
         print('[DEBUG|add_seq_answer_module] rnn_inputs: %s' % rnn_inputs)
 
@@ -413,6 +415,16 @@ class DMNPlus(object):
                                    name='answer_decoder_rnn')
         print('[DEBUG|add_seq_answer_module] y_rnn_outputs.shape: %s' % y_rnn_outputs.shape)
         print('[DEBUG|add_seq_answer_module] y_rnn_outputs: %s' % y_rnn_outputs)
+
+        # 20170518 Tried converting tf.scan to for loop but still poor performance
+        # prev_step_result = init_y_and_a
+        # y_rnn_outputs = []
+        # for i, rnn_input in enumerate(tf.unstack(rnn_inputs)):
+        #     with tf.variable_scope('answer_gru', reuse=i > 0):
+        #         prev_step_result = gru_step_func(prev_step_result, rnn_input)
+        #         y_rnn_outputs.append(prev_step_result[0])
+        #
+        # return tf.stack(y_rnn_outputs)
 
         return y_rnn_outputs
 
