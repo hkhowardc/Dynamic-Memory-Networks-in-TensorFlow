@@ -128,11 +128,15 @@ class DMNPlus(object):
     def get_predictions(self, output):
 
         if self.config.seq_answer:
-            print('[DEBUG|get_predictions] output<before transpose>.shape: %s' % output.shape)
-            print('[DEBUG|get_predictions] output<before transpose>: %s' % output)
 
-            # Shape: [answer length x batch_size x self.config.vocab_size] =>
-            #           [batch_size x answer length x self.config.vocab_size]
+            # Shape: answer_length x [batch_size x vocab_size] =>
+            #        [answer_length x batch_size x vocab_size]
+            output = tf.stack(output)
+            print('[DEBUG|get_predictions] output<after stack>.shape: %s' % output.shape)
+            print('[DEBUG|get_predictions] output<before stack>: %s' % output)
+
+            # Shape: [answer_length x batch_size x vocab_size] =>
+            #           [batch_size x answer_length x vocab_size]
             output = tf.transpose(output, [1, 0, 2])
             print('[DEBUG|get_predictions] output<after transpose>.shape: %s' % output.shape)
             print('[DEBUG|get_predictions] output<after transpose>: %s' % output)
@@ -141,7 +145,9 @@ class DMNPlus(object):
             print('[DEBUG|get_predictions] preds.shape: %s' % preds.shape)
             print('[DEBUG|get_predictions] preds: %s' % preds)
 
-            # for both single answer and sequence answer, the last dimension is the unit logits
+            # the last dimension is the unit logits
+            # Shape: [batch_size x answer_length x vocab_size] =>
+            #           [batch_size x answer_length]
             pred = tf.argmax(preds, -1)
             print('[DEBUG|get_predictions] pred<after argmax>.shape: %s' % pred.shape)
             print('[DEBUG|get_predictions] pred<after argmax>: %s' % pred)
@@ -164,31 +170,29 @@ class DMNPlus(object):
 
         if self.config.seq_answer:
 
-            # Split the answer rnn output by time step
-            # Shape: [answer length x batch_size x self.config.vocab_size] =>
-            #           [batch_size x self.config.vocab_size] x answer length
-            ts_output_list = [ts_output for ts_output in tf.unstack(output, axis=0)]
+            # Shape: answer_length x [batch_size x vocab_size]
+            ts_output_list = output
             print('[DEBUG|add_loss_op] ts_output_list: %s' % ts_output_list)
 
-            # Convert Answer targets to grouped by time steps
-            # Shape: [batch_size x answer length] =>
-            #           [answer length x batch_size]
+            # Convert Answer targets to order by time steps 1st
+            # Shape: [batch_size x answer_length] =>
+            #           [answer_length x batch_size]
             targets_per_ts = tf.transpose(self.answer_placeholder, [1, 0])
             print('[DEBUG|add_loss_op] targets_per_ts: %s' % targets_per_ts)
 
-            # Split the time-step-grouped answer targets
-            # Shape: [answer length x batch_size] =>
-            #           [batch_size] x answer length
+            # Split the time-step-ordered answer targets
+            # Shape: [answer_length x batch_size] =>
+            #           answer_length x [batch_size]
             ts_target_list = [ts_target for ts_target in tf.unstack(targets_per_ts, axis=0)]
             print('[DEBUG|add_loss_op] ts_target_list: %s' % ts_target_list)
 
-            # weights is 1D batch-sized float tensor
+            # Weights is list of 1D batch-sized float tensor
+            # Shape: answer_length x [batch_size]
             ts_weight_list = [tf.ones_like(ts_t, dtype=tf.float32) for ts_t in ts_target_list]
             print('[DEBUG|add_loss_op] ts_weight_list: %s' % ts_weight_list)
 
-            # Tried tf.sequence_loss() as calculating xentropy against flattened rnn output and targets does not help
-            # Also, many rnn output calculation takes a mean of xentropy loss instead of sum them up
-            # https://github.com/suriyadeepan/practical_seq2seq/blob/master/seq2seq_wrapper.py
+            # Ref to https://github.com/suriyadeepan/practical_seq2seq/blob/master/seq2seq_wrapper.py
+            # Averaged across time steps but not across batches
             output_loss = tf.contrib.legacy_seq2seq.sequence_loss(logits=ts_output_list,
                                                                   targets=ts_target_list,
                                                                   weights=ts_weight_list,
@@ -321,32 +325,67 @@ class DMNPlus(object):
         return output
 
     def add_seq_answer_module(self, rnn_output, q_vec):
+        """Sequential answer module
 
-        # For decoder inputs with GO signals (represented by zero for now)
-        #   Shape: [batch_size x self.config.vocab_size]
+        Answer Module should be implemented as follows, refers to https://arxiv.org/abs/1506.07285 section 2.4:
+            y(t) = softmax(W(a)a(t))
+            a(t) = GRU([y(t-1), q], q(t-1))
+
+        This DMN+ answer sequence output is inspired by:
+            https://github.com/YerevaNN/Dynamic-memory-networks-in-Theano/blob/master/dmn_batch.py
+
+        For RNN Decoder <GO> signal as GRU's x(0), refers to:
+            http://suriyadeepan.github.io/2016-06-28-easy-seq2seq/
+            https://arxiv.org/abs/1506.03099 section 4.3
+            https://github.com/suriyadeepan/practical_seq2seq/blob/master/seq2seq_wrapper.py
+        """
+
+        # TODO add a seperate integer (not zero, which represents <PAD>/<EOS> for now) to represent <GO>
+        # The GO signal (represented by zero for now) for rnn_decoder()
+        #   Shape: [batch_size x vocab_size]
         rnn_decoder_init_y_go = tf.zeros(shape=(tf.shape(self.answer_placeholder)[0], self.vocab_size))
         print('[DEBUG|add_seq_answer_module] rnn_decoder_init_y_go: %s' % rnn_decoder_init_y_go)
 
-        # this control the number of iteration, since loop_function is used, the rnn_decoder only
-        # takes the first signals
+        # The decoder_inputs for rnn_decoder() to control the number of iteration and
+        # provide the GO signal (1st element)
+        #   Shape: answer_length x [batch_size x vocab_size]
         rnn_inputs = [rnn_decoder_init_y_go for _ in range(self.max_a_len)]
         print('[DEBUG|add_seq_answer_module] rnn_inputs: %s' % rnn_inputs)
 
         # GRU's initial state is last memory a(0) = m(T(M))
-        #   Shape: [batch_size x self.config.hidden_size(m)]
+        #   Shape: [batch_size x hidden_size(m)]
         last_memory = rnn_output
         print('[DEBUG|add_seq_answer_module] last_memory: %s' % last_memory)
 
+        # This tailor-made GRUCell implements the following:
+        #   y(t) = softmax(W(a)a(t))
+        #   a(t) = GRU([y(t-1), q], q(t-1))D
+        #
+        # RNNCell __call__(inputs, state):
+        #   Params:
+        #       inputs:     [batch_size x vocab_size]
+        #       state:      [batch_size x hidden_size(a)]
+        #   Return: (Outputs, New State)
+        #       Outputs:    [batch_size x vocab_size]
+        #       New State:  [batch_size x hidden_size(a)]
         gru_cell_a = AnswerGRUWrapper(gru=self.gru_cell,
                                       q_vec=q_vec,
                                       vocab_size=self.vocab_size)
 
-        # If not None, this function will be applied to the i-th output
+        # Loop function for rnn_decoder, this function will be applied to the i-th output
         # in order to generate the i+1-st input, and decoder_inputs will be ignored,
         # except for the first element ("GO" symbol).
         def decoder_loop_fn(prev, i):
+            # previous step's output of GRU will become the input of GRU in current step
             return prev
 
+        # GRU's initial state is last memory a(0) = m(T(M))
+        # Provide loop_function so GRU output y at step t-1 will become input of the next step t
+        # rnn_decoder() only takes the first element (the GO signal) from rnn_inputs
+        #
+        # Returns:
+        #   outputs:    answer_length x [batch_size x vocab_size]
+        #   state:      answer_length x [batch_size x hidden_size(a)]
         d_outputs, d_states = rnn_decoder(decoder_inputs=rnn_inputs,
                                           initial_state=last_memory,
                                           cell=gru_cell_a,
@@ -354,13 +393,7 @@ class DMNPlus(object):
         print('[DEBUG|add_seq_answer_module] d_outputs: %s' % d_outputs)
         print('[DEBUG|add_seq_answer_module] d_states: %s' % d_states)
 
-        # TODO if this method works, refactor and pass list of 2D batch-sized outputs
-        # Shape: [batch_size x self.config.vocab_size] x answer length =>
-        #           [answer length x batch_size x self.config.vocab_size]
-        y_rnn_outputs = tf.stack(d_outputs)
-        print('[DEBUG|add_seq_answer_module] y_rnn_outputs: %s' % y_rnn_outputs)
-
-        return y_rnn_outputs
+        return d_outputs
 
     def add_seq_answer_module_old(self, rnn_output, q_vec):
         # TODO to be removed
