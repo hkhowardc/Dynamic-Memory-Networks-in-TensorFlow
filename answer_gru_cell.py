@@ -6,10 +6,10 @@ from tensorflow.contrib.rnn.python.ops.core_rnn_cell_impl import _linear
 class AnswerGRUWrapper(RNNCell):
 
     def __init__(self, gru, q_vec, vocab_size):
-        """Create a Answer GRU cell which concat y(t-1) with q
+        """Create a Answer GRU cell which concat y(t-1) with q_vec
         Args:
           gru: an GRUCell
-          q_vec: a 2-D [batch size x q vec dim] tensor 
+          q_vec: a 2-D [batch size x q_vec_dim] tensor 
           vocab_size: integer, the size of the output after projection.
         Raises:
           TypeError: if cell is not an RNNCell.
@@ -41,21 +41,24 @@ class AnswerGRUWrapper(RNNCell):
         """
 
         # Implement a(t) = GRU([y(t-1), q], q(t-1))
-        #   [batch_size x vocab_size] + [batch_size x q_hidden_size]
-        #       => [batch_size x vocab_size + q_hidden_size]
+        #   [batch_size x vocab_size] + [batch_size x hidden_size(q)]
+        #       => [batch_size x vocab_size + hidden_size(q)]
         combined_inputs = tf.concat([inputs, self._q_vec], 1)
 
+        # Implements a(t) = GRU([y(t - 1), q], q(t - 1))
         # invoke the nested RNNCell (GRUCell)
         #   RNNCell __call__(inputs, state):
         #       params:
-        #           inputs: [batch_size x vocab_size + q_hidden_size]
-        #           state:  [batch_size x a_hidden_size]
+        #           inputs: [batch_size x vocab_size + hidden_size(q)]
+        #           state:  [batch_size x hidden_size(a)]
         #       return: (Outputs, New State)
-        #           Outputs:    [batch_size x a_hidden_size]
-        #           New State:  [batch_size x a_hidden_size]
+        #           Outputs:    [batch_size x hidden_size(a)]
+        #           New State:  [batch_size x hidden_size(a)]
         output, res_state = self._cell(combined_inputs, state)
 
         # Implements y(t) = softmax(W(a)*a(t))
+        #   Shape: [batch_size x hidden_size(a)]
+        #               => [batch_size x vocab_size]
         projected = _linear(output,
                             output_size=self._vocab_size,
                             bias=False)
