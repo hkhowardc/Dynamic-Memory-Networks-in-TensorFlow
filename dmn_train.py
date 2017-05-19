@@ -29,10 +29,6 @@ if args.babi_task_id is not None:
 config.seq_answer = args.sequence_answer
 print('Sequence Answers: ', config.seq_answer)
 
-# if config.seq_answer:
-#     if config.babi_id != '8':
-#         raise NotImplementedError('Task %s does not support sequence answer' % config.babi_id)
-
 
 config.babi_id = args.babi_task_id if args.babi_task_id is not None else str(1)
 config.l2 = args.l2_loss if args.l2_loss is not None else 0.001

@@ -132,24 +132,20 @@ class DMNPlus(object):
             # Shape: answer_length x [batch_size x vocab_size] =>
             #        [answer_length x batch_size x vocab_size]
             output = tf.stack(output)
-            print('[DEBUG|get_predictions] output<after stack>.shape: %s' % output.shape)
             print('[DEBUG|get_predictions] output<before stack>: %s' % output)
 
             # Shape: [answer_length x batch_size x vocab_size] =>
             #           [batch_size x answer_length x vocab_size]
             output = tf.transpose(output, [1, 0, 2])
-            print('[DEBUG|get_predictions] output<after transpose>.shape: %s' % output.shape)
             print('[DEBUG|get_predictions] output<after transpose>: %s' % output)
 
             preds = tf.nn.softmax(output)
-            print('[DEBUG|get_predictions] preds.shape: %s' % preds.shape)
             print('[DEBUG|get_predictions] preds: %s' % preds)
 
             # the last dimension is the unit logits
             # Shape: [batch_size x answer_length x vocab_size] =>
             #           [batch_size x answer_length]
             pred = tf.argmax(preds, -1)
-            print('[DEBUG|get_predictions] pred<after argmax>.shape: %s' % pred.shape)
             print('[DEBUG|get_predictions] pred<after argmax>: %s' % pred)
 
         else:
@@ -319,7 +315,6 @@ class DMNPlus(object):
         output = tf.layers.dense(tf.concat([rnn_output, q_vec], 1),
                                  self.vocab_size,
                                  activation=None)
-        print('[DEBUG|add_answer_module] output.shape: %s' % output.shape)
         print('[DEBUG|add_answer_module] output: %s' % output)
 
         return output
@@ -390,122 +385,9 @@ class DMNPlus(object):
                                           initial_state=last_memory,
                                           cell=gru_cell_a,
                                           loop_function=decoder_loop_fn)
-        print('[DEBUG|add_seq_answer_module] d_outputs: %s' % d_outputs)
         print('[DEBUG|add_seq_answer_module] d_states: %s' % d_states)
 
         return d_outputs
-
-    def add_seq_answer_module_old(self, rnn_output, q_vec):
-        # TODO to be removed
-
-        """Sequential answer module
-        
-        Answer Module should be implemented as follows, refers to https://arxiv.org/abs/1506.07285 section 2.4:
-            y(t) = softmax(W(a)a(t))
-            a(t) = GRU([y(t-1), q], q(t-1))
-        
-        DMN+ answer sequence output implementation refers to:
-            https://github.com/YerevaNN/Dynamic-memory-networks-in-Theano/blob/master/dmn_batch.py
-
-        Implementing RNN using tf.scan() refers to:
-            http://r2rt.com/recurrent-neural-networks-in-tensorflow-ii.html
-                    
-        For RNN Decoder <GO> signal as GRU's x(0), refers to:
-            http://suriyadeepan.github.io/2016-06-28-easy-seq2seq/
-            https://arxiv.org/abs/1506.03099 section 4.3
-            https://github.com/suriyadeepan/practical_seq2seq/blob/master/seq2seq_wrapper.py
-            https://github.com/chiphuyen/tf-stanford-tutorials/blob/master/assignments/chatbot/model.py
-            https://github.com/tensorflow/models/tree/master/tutorials/rnn/translate
-        """
-
-        # TODO consider add into seperate vocab size for answer
-        # TODO add a seperate integer (not zero, which represents <PAD>/<EOS> for now) to represent <GO>
-        # TODO also add a seperate integer to represent <EOS> and use zero to represents <PAD>
-        # TODO try embeds decoder_inputs before passing to decoder RNN, refers to embedding_rnn_seq2seq in
-        #   https://github.com/tensorflow/tensorflow/blob/master/
-        #       tensorflow/contrib/legacy_seq2seq/python/ops/seq2seq.py
-
-        rnn_output = tf.nn.dropout(rnn_output, self.dropout_placeholder)
-
-        # step function to execute GRU
-        def gru_step_func(prev_step_output, current_elem):
-            """
-            Refers to http://r2rt.com/recurrent-neural-networks-in-tensorflow-ii.html
-
-            :param prev_step_output: (y(t-1), a(t-1)) or the initializer (y(0), a(0))
-                                     y(0) is <Go> signal, a(0) is the last memory (m(T(M)))                                     
-            :param current_elem: (q_vec)
-            :return: same structure as the initializer a(0)
-            """
-
-            # previous y, y(t-1): [batch_size x self.config.vocab_size]
-            # previous a, a(t-1): [batch_size x self.config.hidden_size(a)]
-            prev_y, prev_a = prev_step_output
-            q = current_elem
-
-            # [batch_size x self.config.vocab_size] + [batch_size x self.config.hidden_size]
-            #   => [batch_size x self.config.vocab_size + self.config.hidden_size]
-            gru_inputs = tf.concat([prev_y, q], 1)
-
-            # RNNCell __call__(inputs, state):
-            #   params:
-            #       inputs: [batch_size x input_size], input_size = self.config.vocab_size + self.config.hidden_size(q)
-            #       state:  [batch_size x self.state_size], self.state_size = self.config.hidden_size(a)
-            #   return: (Outputs, New State)
-            #       Outputs:    [batch_size x self.output_size], self.output_size = self.config.hidden_size(a)
-            #       New State:  [batch_size x self.state_size] self.config.hidden_size(a)
-            _, a = self.gru_cell(inputs=gru_inputs, state=prev_a)
-
-            # Implements y(t) = softmax(W(a)*a(t))
-            # Use dense layer to do matrix multiplication
-            y = tf.layers.dense(a,
-                                units=self.vocab_size,
-                                activation=tf.nn.softmax,
-                                use_bias=False)
-
-            return y, a
-
-        # For decoder inputs with GO signals (represented by zero for now)
-        #   Shape: [batch_size x self.config.vocab_size]
-        rnn_decoder_init_y_go = tf.zeros(shape=(tf.shape(self.answer_placeholder)[0], self.vocab_size))
-        print('[DEBUG|add_seq_answer_module] rnn_decoder_init_y_go.shape: %s' % rnn_decoder_init_y_go.shape)
-        print('[DEBUG|add_seq_answer_module] rnn_decoder_init_y_go: %s' % rnn_decoder_init_y_go)
-
-        # Since every step needs to concate y(t-1) and q, let's pass q_vec as inputs of tf.scan() to determine
-        #   Shape: [answer length x batch_size x self.config.hidden_size(q)]
-        rnn_inputs = tf.stack([q_vec for _ in range(self.max_a_len)])
-        # 20170518 Tried using zero question vector to train task 1 with answer a + 'la' but poor training speed
-        # rnn_inputs = tf.stack([tf.zeros_like(q_vec)] + [q_vec for _ in range(self.max_a_len - 1)])
-        print('[DEBUG|add_seq_answer_module] rnn_inputs.shape: %s' % rnn_inputs.shape)
-        print('[DEBUG|add_seq_answer_module] rnn_inputs: %s' % rnn_inputs)
-
-        # GRU's initial state is last memory a(0) = m(T(M))
-        #   Shape: [batch_size x self.config.hidden_size(m)]
-        last_memory = rnn_output
-        print('[DEBUG|add_seq_answer_module] last_memory.shape: %s' % last_memory.shape)
-        print('[DEBUG|add_seq_answer_module] last_memory: %s' % last_memory)
-
-        # initial values of tf.scan()
-        init_y_and_a = (rnn_decoder_init_y_go, last_memory)
-
-        y_rnn_outputs, _ = tf.scan(fn=gru_step_func,
-                                   elems=rnn_inputs,
-                                   initializer=init_y_and_a,
-                                   name='answer_decoder_rnn')
-        print('[DEBUG|add_seq_answer_module] y_rnn_outputs.shape: %s' % y_rnn_outputs.shape)
-        print('[DEBUG|add_seq_answer_module] y_rnn_outputs: %s' % y_rnn_outputs)
-
-        # 20170518 Tried converting tf.scan to for loop but still poor performance
-        # prev_step_result = init_y_and_a
-        # y_rnn_outputs = []
-        # for i, rnn_input in enumerate(tf.unstack(rnn_inputs)):
-        #     with tf.variable_scope('answer_gru', reuse=i > 0):
-        #         prev_step_result = gru_step_func(prev_step_result, rnn_input)
-        #         y_rnn_outputs.append(prev_step_result[0])
-        #
-        # return tf.stack(y_rnn_outputs)
-
-        return y_rnn_outputs
 
     def inference(self):
         """Performs inference on the DMN model"""
@@ -564,19 +446,6 @@ class DMNPlus(object):
 
         return output
 
-    # def count_unordered_matches(self, pred_sent, expected_sent):
-    #
-    #     expected_word_set = set(expected_sent.tolist())
-    #
-    #     match_count = 0
-    #     for word_idx in pred_sent:
-    #         if word_idx in expected_word_set:
-    #             match_count += 1
-    #
-    #     print('[DEBUG] %s vs %s => %s' % (pred_sent, expected_sent, match_count))
-    #
-    #     return match_count
-
     def run_epoch(self, session, data, num_epoch=0, train_writer=None, train_op=None, verbose=2, train=False):
         config = self.config
         dp = config.dropout
@@ -592,9 +461,10 @@ class DMNPlus(object):
         qp, ip, ql, il, im, a, r = data
         qp, ip, ql, il, im, a, r = qp[p], ip[p], ql[p], il[p], im[p], a[p], r[p] 
 
-        # Test Debugging
+        # # Test Debugging
         # for t_i in range(3):
-        #     print("Data[%s] qp: %s, ip: %s, ql: %s, il: %s, im: %s, a: %s, r: %s" % (t_i, qp[t_i], ip[t_i], ql[t_i], il[t_i], im[t_i], a[t_i], r[t_i]))
+        #     print("Data[%s] qp: %s, ip: %s, ql: %s, il: %s, im: %s, a: %s, r: %s" % (
+        #         t_i, qp[t_i], ip[t_i], ql[t_i], il[t_i], im[t_i], a[t_i], r[t_i]))
 
         for step in range(total_steps):
             index = list(range(step * config.batch_size, (step + 1) * config.batch_size))
@@ -621,11 +491,6 @@ class DMNPlus(object):
                 #
                 # TODO for accuracy of more variable free-text consider weighting
                 #   Ref: http://www.wildml.com/2016/08/rnns-in-tensorflow-a-practical-guide-and-undocumented-features
-
-                # unordered_matches = [self.count_unordered_matches(pred_st, answers_st)
-                #                      for pred_st, answers_st in zip(pred, answers)]
-                # accuracy_unordered = np.sum(unordered_matches) / float(len(answers) * self.max_a_len)
-                # print('accuracy_unordered (total %s answers): %s' % (len(answers), accuracy_unordered))
 
                 # for pred_st, answers_st in zip(pred, answers):
                 #     print('[DEBUG] %s vs %s => %s' % (pred_st, answers_st, np.array_equiv(pred_st, answers_st)))
