@@ -274,7 +274,7 @@ def create_embedding(word2vec, ivocab, embed_size):
     return embedding
 
 
-def convert_task_8_answers_to_sequences(data_raw):
+def convert_comma_list_to_space_list(data_raw):
     for x in data_raw:
         original_A = x["A"]
         x["A"] = original_A.replace(',', ' ')
@@ -302,10 +302,10 @@ def load_babi(config, split_sentences=False):
                  word_vector_size=config.embed_size,
                  to_return="index")
 
-    if config.babi_id in ('8', 'sh8', 'joint') and config.seq_answer:
+    if config.babi_id in ('8', 'sh8') and config.seq_answer:
         print("==> [config.seq_answer=%s] Convert comma ',' in task 8's answers to space ' '" % config.seq_answer)
-        convert_task_8_answers_to_sequences(babi_train_raw)
-        convert_task_8_answers_to_sequences(babi_test_raw)
+        convert_comma_list_to_space_list(babi_train_raw)
+        convert_comma_list_to_space_list(babi_test_raw)
 
     print('==> get train inputs')
     train_data = process_input(babi_train_raw, config.floatX, word2vec, vocab, ivocab, config.embed_size,
