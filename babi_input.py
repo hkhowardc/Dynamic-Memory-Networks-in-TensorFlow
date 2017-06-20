@@ -196,7 +196,7 @@ def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_s
 
             answers.append(np.vstack(a_vector).astype(floatX))
         else:
-            answers.append(process_word(word=x["A"],
+            answers.append(process_word(word=x["A"].lower(),
                                         word2vec=word2vec,
                                         vocab=vocab,
                                         ivocab=ivocab,
@@ -267,7 +267,8 @@ def pad_inputs(inputs, lens, max_len, mode="", sen_lens=None, max_sen_len=None):
 
 
 def create_embedding(word2vec, ivocab, embed_size):
-    embedding = np.zeros((len(ivocab), embed_size))
+    # if dtype is not specified, glove weights are truncated
+    embedding = np.zeros((len(ivocab), embed_size), dtype=np.float32)
     for i in range(len(ivocab)):
         word = ivocab[i]
         embedding[i] = word2vec[word]
@@ -364,10 +365,14 @@ def load_babi(config, split_sentences=False):
 
         answers = np.stack(answers)
 
-    rel_labels = np.zeros((len(rel_labels), len(rel_labels[0])))
+    rel_lbl_lens = get_lens(rel_labels)
+    max_rel_lbl_len = np.max(rel_lbl_lens)
 
-    for i, tt in enumerate(rel_labels):
-        rel_labels[i] = np.array(tt, dtype=int)
+    rel_labels_as_lists = rel_labels
+    rel_labels = np.zeros((len(rel_labels_as_lists), max_rel_lbl_len), dtype=np.int32)
+
+    for i, tt in enumerate(rel_labels_as_lists):
+        rel_labels[i][:rel_lbl_lens[i]] = np.array(tt, dtype=np.int32)
 
     if config.train_mode:
         train = questions[:config.num_train], inputs[:config.num_train], q_lens[:config.num_train], input_lens[:config.num_train], input_masks[:config.num_train], answers[:config.num_train], rel_labels[:config.num_train] 
