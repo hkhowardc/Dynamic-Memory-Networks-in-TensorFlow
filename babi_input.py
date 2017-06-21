@@ -212,7 +212,7 @@ def process_input(data_raw, floatX, word2vec, vocab, ivocab, embed_size, split_s
             else:
                 raise Exception("invalid input_mask_mode")
 
-        relevant_labels.append(x["S"])
+        relevant_labels.append(np.array(x["S"], dtype=np.int32))
 
     for k, v in vocab.items():
         print("{} => {}".format(k, v))
