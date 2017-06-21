@@ -275,12 +275,28 @@ def create_embedding(word2vec, ivocab, embed_size):
     return embedding
 
 
-def convert_comma_list_to_space_list(data_raw):
+def convert_task_19_seq_answers(data_raw):
+    direction_map = {'e': 'east', 'w': 'west', 'n': 'north', 's': 'south'}
+
+    for x in data_raw:
+        original_A = x["A"]
+        new_A = ""
+        for a in x["A"].split():
+            if len(new_A) > 0:
+                new_A += ' '
+            new_A += direction_map[a]
+
+        x['A'] = new_A
+
+        print('[DEBUG] %s => %s' % (original_A, x['A']))
+
+
+def convert_comma_answers_to_space_answers(data_raw):
     for x in data_raw:
         original_A = x["A"]
         x["A"] = original_A.replace(',', ' ')
 
-        # print('[DEBUG] %s => %s' % (original_A, x['A']))
+        print('[DEBUG] %s => %s' % (original_A, x['A']))
 
 
 def load_babi(config, split_sentences=False):
@@ -303,10 +319,16 @@ def load_babi(config, split_sentences=False):
                  word_vector_size=config.embed_size,
                  to_return="index")
 
-    if config.babi_id in ('8', 'sh8') and config.seq_answer:
-        print("==> [config.seq_answer=%s] Convert comma ',' in task 8's answers to space ' '" % config.seq_answer)
-        convert_comma_list_to_space_list(babi_train_raw)
-        convert_comma_list_to_space_list(babi_test_raw)
+    if config.babi_id in ('8', 'sh8', '19', 'sh19') and config.seq_answer:
+        print("[INFO] ==> [config.seq_answer=%s] Convert comma ',' in task %s's answers to space ' '" % (
+            config.seq_answer, config.babi_id))
+
+        convert_comma_answers_to_space_answers(babi_train_raw)
+        convert_comma_answers_to_space_answers(babi_test_raw)
+
+        if config.babi_id == '19':
+            convert_task_19_seq_answers(babi_train_raw)
+            convert_task_19_seq_answers(babi_test_raw)
 
     print('==> get train inputs')
     train_data = process_input(babi_train_raw, config.floatX, word2vec, vocab, ivocab, config.embed_size,
