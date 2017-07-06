@@ -333,6 +333,8 @@ class DMNPlus(object):
             https://github.com/suriyadeepan/practical_seq2seq/blob/master/seq2seq_wrapper.py
         """
 
+        rnn_output = tf.nn.dropout(rnn_output, self.dropout_placeholder)
+
         # TODO add a seperate integer (not zero, which represents <PAD>/<EOS> for now) to represent <GO>
         # The GO signal (represented by zero for now) for rnn_decoder()
         #   Shape: [batch_size x vocab_size]
